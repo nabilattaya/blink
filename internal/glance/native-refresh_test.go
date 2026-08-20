@@ -158,7 +158,7 @@ func TestWidgetContentEndpoint(t *testing.T) {
 
 	response := httptest.NewRecorder()
 
-	app.handleWidgetRequest(response, request)
+	app.handleNativeWidgetContentRequest(response, request)
 
 	result := response.Result()
 	defer result.Body.Close()
@@ -218,7 +218,7 @@ func TestWidgetContentEndpointRejectsNonGET(t *testing.T) {
 
 	response := httptest.NewRecorder()
 
-	app.handleWidgetRequest(response, request)
+	app.handleNativeWidgetContentRequest(response, request)
 
 	result := response.Result()
 	defer result.Body.Close()
@@ -253,7 +253,7 @@ func TestWidgetContentEndpointUnknownWidget(t *testing.T) {
 
 	response := httptest.NewRecorder()
 
-	app.handleWidgetRequest(response, request)
+	app.handleNativeWidgetContentRequest(response, request)
 
 	if response.Code != http.StatusNotFound {
 		t.Fatalf(
@@ -280,7 +280,7 @@ func TestWidgetContentEndpointDisablesCaching(t *testing.T) {
 
 	response := httptest.NewRecorder()
 
-	app.handleWidgetRequest(response, request)
+	app.handleNativeWidgetContentRequest(response, request)
 
 	result := response.Result()
 	defer result.Body.Close()
@@ -357,7 +357,7 @@ func TestWidgetContentEndpointUpdatesOnlyRequestedWidget(t *testing.T) {
 
 	response := httptest.NewRecorder()
 
-	app.handleWidgetRequest(response, request)
+	app.handleNativeWidgetContentRequest(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf(

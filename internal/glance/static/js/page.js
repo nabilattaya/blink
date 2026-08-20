@@ -391,8 +391,8 @@ function attachExpandToggleButton(collapsibleContainer) {
 };
 
 
-function setupCollapsibleLists() {
-    const collapsibleLists = document.querySelectorAll(".list.collapsible-container");
+function setupCollapsibleLists(root = document) {
+    const collapsibleLists = root.querySelectorAll(".list.collapsible-container");
 
     if (collapsibleLists.length == 0) {
         return;
@@ -670,72 +670,10 @@ function setupRelativeTimeInElement(element) {
     );
 }
 
-function setupCollapsibleListsInElement(element) {
-    const collapsibleLists =
-        element.querySelectorAll(
-            ".list.collapsible-container"
-        );
-
-    for (let i = 0; i < collapsibleLists.length; i++) {
-        const list = collapsibleLists[i];
-
-        if (list.dataset.collapseAfter === undefined) {
-            continue;
-        }
-
-        const collapseAfter =
-            parseInt(list.dataset.collapseAfter);
-
-        if (
-            collapseAfter == -1 ||
-            list.children.length <= collapseAfter
-        ) {
-            continue;
-        }
-
-        attachExpandToggleButton(list);
-
-        for (
-            let c = collapseAfter;
-            c < list.children.length;
-            c++
-        ) {
-            const child = list.children[c];
-
-            child.classList.add(
-                "collapsible-item"
-            );
-
-            child.style.animationDelay =
-                ((c - collapseAfter) * 20)
-                    .toString() + "ms";
-        }
-    }
-}
-
-function setupTruncatedTitlesInElement(element) {
-    const elements = element.querySelectorAll(
-        ".text-truncate, " +
-        ".single-line-titles .title, " +
-        ".text-truncate-2-lines, " +
-        ".text-truncate-3-lines"
-    );
-
-    for (let i = 0; i < elements.length; i++) {
-        const item = elements[i];
-
-        if (item.getAttribute("title") === null) {
-            item.title = item.innerText
-                .trim()
-                .replace(/\s+/g, " ");
-        }
-    }
-}
-
 function setupRefreshedNativeWidget(widget) {
     setupRelativeTimeInElement(widget);
-    setupCollapsibleListsInElement(widget);
-    setupTruncatedTitlesInElement(widget);
+    setupCollapsibleLists(widget);
+    setupTruncatedElementTitles(widget);
 }
 
 async function refreshNativeWidget(widget) {
@@ -940,8 +878,8 @@ function setupNativeWidgetRefresh() {
     );
 }
 
-function setupTruncatedElementTitles() {
-    const elements = document.querySelectorAll(".text-truncate, .single-line-titles .title, .text-truncate-2-lines, .text-truncate-3-lines");
+function setupTruncatedElementTitles(root = document) {
+    const elements = root.querySelectorAll(".text-truncate, .single-line-titles .title, .text-truncate-2-lines, .text-truncate-3-lines");
 
     if (elements.length == 0) {
         return;

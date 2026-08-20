@@ -453,46 +453,7 @@ func (a *application) handleWidgetRequest(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if r.PathValue("path") != "content/" &&
-		r.PathValue("path") != "content" {
-		widget.handleRequest(w, r)
-		return
-	}
-
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", http.MethodGet)
-		http.Error(
-			w,
-			http.StatusText(http.StatusMethodNotAllowed),
-			http.StatusMethodNotAllowed,
-		)
-		return
-	}
-
-	page, exists := a.pageByWidgetID[widgetID]
-	if !exists {
-		a.handleNotFound(w, r)
-		return
-	}
-
-	page.mu.Lock()
-	defer page.mu.Unlock()
-
-	// A fragment request must not refresh unrelated widgets on the page.
-	// Keep the existing page lock until widget-level update/render locking
-	// is introduced, but only update the requested widget when its cache
-	// policy says it is stale.
-	now := time.Now()
-	if widget.requiresUpdate(&now) {
-		widget.update(context.Background())
-	}
-
-	w.Header().Set(
-		"Content-Type",
-		"text/html; charset=utf-8",
-	)
-	w.Header().Set("Cache-Control", "no-store")
-	w.Write([]byte(widget.Render()))
+	widget.handleRequest(w, r)
 }
 
 func (a *application) StaticAssetPath(asset string) string {
@@ -516,6 +477,10 @@ func (a *application) server() (func() error, func() error) {
 		mux.HandleFunc("POST /api/set-theme/{key}", a.handleThemeChangeRequest)
 	}
 
+	mux.HandleFunc(
+		"/api/widgets/{widget}/content/{$}",
+		a.handleNativeWidgetContentRequest,
+	)
 	mux.HandleFunc("/api/widgets/{widget}/{path...}", a.handleWidgetRequest)
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
