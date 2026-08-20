@@ -208,14 +208,21 @@ function setupSearchBoxes() {
 }
 
 function setupDynamicRelativeTime() {
-    const elements = document.querySelectorAll("[data-dynamic-relative-time]");
     const updateInterval = 60 * 1000;
     let lastUpdateTime = Date.now();
 
-    updateRelativeTimeForElements(elements);
+    const updateElements = () => {
+        updateRelativeTimeForElements(
+            document.querySelectorAll(
+                "[data-dynamic-relative-time]"
+            )
+        );
+    };
+
+    updateElements();
 
     const updateElementsAndTimestamp = () => {
-        updateRelativeTimeForElements(elements);
+        updateElements();
         lastUpdateTime = Date.now();
     };
 
@@ -654,6 +661,262 @@ async function setupTodos() {
     }
 }
 
+
+function setupRelativeTimeInElement(element) {
+    updateRelativeTimeForElements(
+        element.querySelectorAll(
+            "[data-dynamic-relative-time]"
+        )
+    );
+}
+
+function setupCollapsibleListsInElement(element) {
+    const collapsibleLists =
+        element.querySelectorAll(
+            ".list.collapsible-container"
+        );
+
+    for (let i = 0; i < collapsibleLists.length; i++) {
+        const list = collapsibleLists[i];
+
+        if (list.dataset.collapseAfter === undefined) {
+            continue;
+        }
+
+        const collapseAfter =
+            parseInt(list.dataset.collapseAfter);
+
+        if (
+            collapseAfter == -1 ||
+            list.children.length <= collapseAfter
+        ) {
+            continue;
+        }
+
+        attachExpandToggleButton(list);
+
+        for (
+            let c = collapseAfter;
+            c < list.children.length;
+            c++
+        ) {
+            const child = list.children[c];
+
+            child.classList.add(
+                "collapsible-item"
+            );
+
+            child.style.animationDelay =
+                ((c - collapseAfter) * 20)
+                    .toString() + "ms";
+        }
+    }
+}
+
+function setupTruncatedTitlesInElement(element) {
+    const elements = element.querySelectorAll(
+        ".text-truncate, " +
+        ".single-line-titles .title, " +
+        ".text-truncate-2-lines, " +
+        ".text-truncate-3-lines"
+    );
+
+    for (let i = 0; i < elements.length; i++) {
+        const item = elements[i];
+
+        if (item.getAttribute("title") === null) {
+            item.title = item.innerText
+                .trim()
+                .replace(/\s+/g, " ");
+        }
+    }
+}
+
+function setupRefreshedNativeWidget(widget) {
+    setupRelativeTimeInElement(widget);
+    setupCollapsibleListsInElement(widget);
+    setupTruncatedTitlesInElement(widget);
+}
+
+async function refreshNativeWidget(widget) {
+    const widgetID = widget.dataset.widgetId;
+
+    if (widgetID === undefined) {
+        return null;
+    }
+
+    const response = await fetch(
+        `${pageData.baseURL}/api/widgets/` +
+        `${widgetID}/content/`
+    );
+
+    if (!response.ok) {
+        throw new Error(
+            `widget ${widgetID}: HTTP ` +
+            response.status
+        );
+    }
+
+    const html = await response.text();
+    const template =
+        document.createElement("template");
+
+    template.innerHTML = html.trim();
+
+    const replacement =
+        template.content.firstElementChild;
+
+    if (
+        replacement === null ||
+        replacement.dataset.widgetId !== widgetID
+    ) {
+        throw new Error(
+            `widget ${widgetID}: invalid fragment`
+        );
+    }
+
+    widget.replaceWith(replacement);
+    setupRefreshedNativeWidget(replacement);
+
+    return replacement;
+}
+
+function setupNativeWidgetRefresh() {
+    const states = new Map();
+
+    const schedule = (state, delay) => {
+        clearTimeout(state.timer);
+
+        if (document.hidden) {
+            state.timer = null;
+            return;
+        }
+
+        state.timer = setTimeout(
+            () => refresh(state),
+            delay
+        );
+    };
+
+    const refresh = async (state) => {
+        if (state.running || document.hidden) {
+            return;
+        }
+
+        const widget = document.querySelector(
+            `[data-widget-id="${state.id}"]`
+        );
+
+        if (widget === null) {
+            states.delete(state.id);
+            return;
+        }
+
+        state.running = true;
+
+        try {
+            const replacement =
+                await refreshNativeWidget(widget);
+
+            if (replacement !== null) {
+                const interval =
+                    parseInt(
+                        replacement.dataset.widgetRefresh
+                    );
+
+                if (
+                    Number.isFinite(interval) &&
+                    interval > 0
+                ) {
+                    state.interval = interval;
+                }
+            }
+
+            state.lastRefresh = Date.now();
+        } catch (error) {
+            console.error(
+                "Failed to refresh native widget:",
+                error
+            );
+        } finally {
+            state.running = false;
+
+            if (states.has(state.id)) {
+                schedule(
+                    state,
+                    state.interval
+                );
+            }
+        }
+    };
+
+    const discover = () => {
+        const widgets =
+            document.querySelectorAll(
+                "[data-widget-id]" +
+                "[data-widget-refresh]"
+            );
+
+        for (const widget of widgets) {
+            const id = widget.dataset.widgetId;
+            const interval =
+                parseInt(
+                    widget.dataset.widgetRefresh
+                );
+
+            if (
+                id === undefined ||
+                !Number.isFinite(interval) ||
+                interval <= 0 ||
+                states.has(id)
+            ) {
+                continue;
+            }
+
+            const state = {
+                id,
+                interval,
+                timer: null,
+                running: false,
+                lastRefresh: Date.now(),
+            };
+
+            states.set(id, state);
+            schedule(state, interval);
+        }
+    };
+
+    discover();
+
+    document.addEventListener(
+        "visibilitychange",
+        () => {
+            const now = Date.now();
+
+            for (const state of states.values()) {
+                clearTimeout(state.timer);
+                state.timer = null;
+
+                if (document.hidden) {
+                    continue;
+                }
+
+                const elapsed =
+                    now - state.lastRefresh;
+
+                if (elapsed >= state.interval) {
+                    refresh(state);
+                } else {
+                    schedule(
+                        state,
+                        state.interval - elapsed
+                    );
+                }
+            }
+        }
+    );
+}
+
 function setupTruncatedElementTitles() {
     const elements = document.querySelectorAll(".text-truncate, .single-line-titles .title, .text-truncate-2-lines, .text-truncate-3-lines");
 
@@ -766,6 +1029,7 @@ async function setupPage() {
         setupMasonries();
         setupDynamicRelativeTime();
         setupLazyImages();
+        setupNativeWidgetRefresh();
     } finally {
         pageElement.classList.add("content-ready");
         pageElement.setAttribute("aria-busy", "false");

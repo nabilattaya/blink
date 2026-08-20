@@ -155,6 +155,7 @@ type widgetBase struct {
 	HideHeader          bool             `yaml:"hide-header"`
 	CSSClass            string           `yaml:"css-class"`
 	CustomCacheDuration durationField    `yaml:"cache"`
+	RefreshInterval     durationField    `yaml:"refresh"`
 	ContentAvailable    bool             `yaml:"-"`
 	WIP                 bool             `yaml:"-"`
 	Error               error            `yaml:"-"`
@@ -208,6 +209,10 @@ func (widget *widgetBase) handleRequest(w http.ResponseWriter, r *http.Request) 
 
 func (w *widgetBase) GetType() string {
 	return w.Type
+}
+
+func (w *widgetBase) GetRefreshIntervalMilliseconds() int64 {
+	return time.Duration(w.RefreshInterval).Milliseconds()
 }
 
 func (w *widgetBase) setProviders(providers *widgetProviders) {
