@@ -12,38 +12,115 @@ async function fetchPageContent(pageData) {
     return content;
 }
 
-function setupCarousels() {
-    const carouselElements = document.getElementsByClassName("carousel-container");
+let carouselResizeListenerInitialized = false;
+
+function updateCarouselSideCutoffs(carousel) {
+    const itemsContainer =
+        carousel.getElementsByClassName(
+            "carousel-items-container"
+        )[0];
+
+    if (itemsContainer === undefined) {
+        return;
+    }
+
+    if (itemsContainer.scrollLeft != 0) {
+        carousel.classList.add(
+            "show-left-cutoff"
+        );
+    } else {
+        carousel.classList.remove(
+            "show-left-cutoff"
+        );
+    }
+
+    if (
+        Math.ceil(itemsContainer.scrollLeft) +
+            itemsContainer.clientWidth <
+        itemsContainer.scrollWidth
+    ) {
+        carousel.classList.add(
+            "show-right-cutoff"
+        );
+    } else {
+        carousel.classList.remove(
+            "show-right-cutoff"
+        );
+    }
+}
+
+function setupCarousels(root = document) {
+    const carouselElements =
+        root.querySelectorAll(
+            ".carousel-container"
+        );
 
     if (carouselElements.length == 0) {
         return;
     }
 
-    for (let i = 0; i < carouselElements.length; i++) {
+    if (!carouselResizeListenerInitialized) {
+        const updateAllCarouselSideCutoffs =
+            throttledDebounce(() => {
+                const currentCarousels =
+                    document.getElementsByClassName(
+                        "carousel-container"
+                    );
+
+                for (
+                    let i = 0;
+                    i < currentCarousels.length;
+                    i++
+                ) {
+                    updateCarouselSideCutoffs(
+                        currentCarousels[i]
+                    );
+                }
+            }, 20, 100);
+
+        window.addEventListener(
+            "resize",
+            updateAllCarouselSideCutoffs
+        );
+
+        carouselResizeListenerInitialized = true;
+    }
+
+    for (
+        let i = 0;
+        i < carouselElements.length;
+        i++
+    ) {
         const carousel = carouselElements[i];
-        carousel.classList.add("show-right-cutoff");
-        const itemsContainer = carousel.getElementsByClassName("carousel-items-container")[0];
+        const itemsContainer =
+            carousel.getElementsByClassName(
+                "carousel-items-container"
+            )[0];
 
-        const determineSideCutoffs = () => {
-            if (itemsContainer.scrollLeft != 0) {
-                carousel.classList.add("show-left-cutoff");
-            } else {
-                carousel.classList.remove("show-left-cutoff");
-            }
-
-            if (Math.ceil(itemsContainer.scrollLeft) + itemsContainer.clientWidth < itemsContainer.scrollWidth) {
-                carousel.classList.add("show-right-cutoff");
-            } else {
-                carousel.classList.remove("show-right-cutoff");
-            }
+        if (itemsContainer === undefined) {
+            continue;
         }
 
-        const determineSideCutoffsRateLimited = throttledDebounce(determineSideCutoffs, 20, 100);
+        carousel.classList.add(
+            "show-right-cutoff"
+        );
 
-        itemsContainer.addEventListener("scroll", determineSideCutoffsRateLimited);
-        window.addEventListener("resize", determineSideCutoffsRateLimited);
+        const determineSideCutoffs = () => {
+            updateCarouselSideCutoffs(carousel);
+        };
 
-        afterContentReady(determineSideCutoffs);
+        itemsContainer.addEventListener(
+            "scroll",
+            throttledDebounce(
+                determineSideCutoffs,
+                20,
+                100
+            )
+        );
+
+        afterContentReady(
+            determineSideCutoffs
+        );
     }
 }
 
@@ -316,8 +393,8 @@ function setupGroups() {
     }
 }
 
-function setupLazyImages() {
-    const images = document.querySelectorAll("img[loading=lazy]");
+function setupLazyImages(root = document) {
+    const images = root.querySelectorAll("img[loading=lazy]");
 
     if (images.length == 0) {
         return;
@@ -671,7 +748,9 @@ function setupRelativeTimeInElement(element) {
 }
 
 function setupRefreshedNativeWidget(widget) {
+    setupCarousels(widget);
     setupRelativeTimeInElement(widget);
+    setupLazyImages(widget);
     setupCollapsibleLists(widget);
     setupTruncatedElementTitles(widget);
 }
