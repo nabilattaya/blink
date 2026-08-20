@@ -474,12 +474,20 @@ func (a *application) handleWidgetRequest(w http.ResponseWriter, r *http.Request
 	page.mu.Lock()
 	defer page.mu.Unlock()
 
-	page.updateOutdatedWidgets()
+	// A fragment request must not refresh unrelated widgets on the page.
+	// Keep the existing page lock until widget-level update/render locking
+	// is introduced, but only update the requested widget when its cache
+	// policy says it is stale.
+	now := time.Now()
+	if widget.requiresUpdate(&now) {
+		widget.update(context.Background())
+	}
 
 	w.Header().Set(
 		"Content-Type",
 		"text/html; charset=utf-8",
 	)
+	w.Header().Set("Cache-Control", "no-store")
 	w.Write([]byte(widget.Render()))
 }
 
