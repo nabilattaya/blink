@@ -752,6 +752,8 @@ function setupTruncatedTitlesInElement(element) {
 }
 
 function setupRefreshedNativeWidget(widget) {
+    setupCarousels(widget);
+    setupLazyImages(widget);
     setupRelativeTimeInElement(widget);
     setupCollapsibleListsInElement(widget);
     setupTruncatedTitlesInElement(widget);
