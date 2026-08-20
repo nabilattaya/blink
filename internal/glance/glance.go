@@ -339,7 +339,11 @@ func (a *application) handlePageRequest(w http.ResponseWriter, r *http.Request) 
 	a.populateTemplateRequestData(&data.Request, r)
 
 	var responseBytes bytes.Buffer
+
+	page.mu.Lock()
 	err := pageTemplate.Execute(&responseBytes, data)
+	page.mu.Unlock()
+
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
