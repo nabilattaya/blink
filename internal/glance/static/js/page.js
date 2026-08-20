@@ -814,6 +814,8 @@ function setupNativeWidgetRefresh() {
 
         state.running = true;
 
+        let nextDelay = state.interval;
+
         try {
             const replacement =
                 await refreshNativeWidget(widget);
@@ -833,18 +835,38 @@ function setupNativeWidgetRefresh() {
             }
 
             state.lastRefresh = Date.now();
+            state.failureCount = 0;
+            nextDelay = state.interval;
         } catch (error) {
             console.error(
                 "Failed to refresh native widget:",
                 error
             );
+
+            const retryDelays = [
+                30 * 1000,
+                60 * 1000,
+                2 * 60 * 1000,
+                5 * 60 * 1000
+            ];
+
+            if (state.failureCount < retryDelays.length) {
+                nextDelay = Math.min(
+                    retryDelays[state.failureCount],
+                    state.interval
+                );
+            } else {
+                nextDelay = state.interval;
+            }
+
+            state.failureCount++;
         } finally {
             state.running = false;
 
             if (states.has(state.id)) {
                 schedule(
                     state,
-                    state.interval
+                    nextDelay
                 );
             }
         }
@@ -879,6 +901,7 @@ function setupNativeWidgetRefresh() {
                 timer: null,
                 running: false,
                 lastRefresh: Date.now(),
+                failureCount: 0,
             };
 
             states.set(id, state);
