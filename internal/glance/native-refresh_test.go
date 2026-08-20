@@ -1,6 +1,8 @@
 package glance
 
 import (
+	"context"
+	"html/template"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -258,6 +260,124 @@ func TestWidgetContentEndpointUnknownWidget(t *testing.T) {
 			"status = %d, want %d",
 			response.Code,
 			http.StatusNotFound,
+		)
+	}
+}
+
+func TestWidgetContentEndpointDisablesCaching(t *testing.T) {
+	app, widgetID := newNativeRefreshTestApplication()
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/widgets/42/content/",
+		nil,
+	)
+	request.SetPathValue(
+		"widget",
+		strconv.FormatUint(widgetID, 10),
+	)
+	request.SetPathValue("path", "content/")
+
+	response := httptest.NewRecorder()
+
+	app.handleWidgetRequest(response, request)
+
+	result := response.Result()
+	defer result.Body.Close()
+
+	if got := result.Header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf(
+			"Cache-Control = %q, want %q",
+			got,
+			"no-store",
+		)
+	}
+}
+
+type nativeRefreshCountingWidget struct {
+	widgetBase
+	updateCount int
+}
+
+func (widget *nativeRefreshCountingWidget) initialize() error {
+	return nil
+}
+
+func (widget *nativeRefreshCountingWidget) update(context.Context) {
+	widget.updateCount++
+	widget.scheduleNextUpdate()
+}
+
+func (widget *nativeRefreshCountingWidget) Render() template.HTML {
+	return template.HTML(
+		`<div data-widget-id="` +
+			strconv.FormatUint(widget.ID, 10) +
+			`"></div>`,
+	)
+}
+
+func TestWidgetContentEndpointUpdatesOnlyRequestedWidget(t *testing.T) {
+	requested := &nativeRefreshCountingWidget{}
+	requested.Type = "test"
+	requested.ID = 42
+	requested.cacheType = cacheTypeDuration
+	requested.cacheDuration = time.Hour
+
+	unrelated := &nativeRefreshCountingWidget{}
+	unrelated.Type = "test"
+	unrelated.ID = 43
+	unrelated.cacheType = cacheTypeDuration
+	unrelated.cacheDuration = time.Hour
+
+	testPage := &page{
+		HeadWidgets: widgets{
+			requested,
+			unrelated,
+		},
+	}
+
+	app := &application{
+		widgetByID: map[uint64]widget{
+			requested.ID: requested,
+			unrelated.ID: unrelated,
+		},
+		pageByWidgetID: map[uint64]*page{
+			requested.ID: testPage,
+			unrelated.ID: testPage,
+		},
+	}
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/widgets/42/content/",
+		nil,
+	)
+	request.SetPathValue("widget", "42")
+	request.SetPathValue("path", "content/")
+
+	response := httptest.NewRecorder()
+
+	app.handleWidgetRequest(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf(
+			"status = %d, want %d",
+			response.Code,
+			http.StatusOK,
+		)
+	}
+
+	if requested.updateCount != 1 {
+		t.Errorf(
+			"requested update count = %d, want 1",
+			requested.updateCount,
+		)
+	}
+
+	if unrelated.updateCount != 0 {
+		t.Errorf(
+			"unrelated update count = %d, want 0",
+			unrelated.updateCount,
 		)
 	}
 }
