@@ -232,6 +232,22 @@ func newApplication(c *config) (*application, error) {
 	return app, nil
 }
 
+func (a *application) registerWidget(page *page, widget widget) {
+	a.widgetByID[widget.GetID()] = widget
+	a.pageByWidgetID[widget.GetID()] = page
+
+	switch container := widget.(type) {
+	case *groupWidget:
+		for i := range container.Widgets {
+			a.registerWidget(page, container.Widgets[i])
+		}
+	case *splitColumnWidget:
+		for i := range container.Widgets {
+			a.registerWidget(page, container.Widgets[i])
+		}
+	}
+}
+
 func (p *page) updateOutdatedWidgets() {
 	now := time.Now()
 
@@ -415,26 +431,48 @@ func (a *application) handleNotFound(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *application) handleWidgetRequest(w http.ResponseWriter, r *http.Request) {
-	// TODO: this requires a rework of the widget update logic so that rather
-	// than locking the entire page we lock individual widgets
-	w.WriteHeader(http.StatusNotImplemented)
+	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+		return
+	}
 
-	// widgetValue := r.PathValue("widget")
+	widgetID, err := strconv.ParseUint(
+		r.PathValue("widget"),
+		10,
+		64,
+	)
+	if err != nil {
+		a.handleNotFound(w, r)
+		return
+	}
 
-	// widgetID, err := strconv.ParseUint(widgetValue, 10, 64)
-	// if err != nil {
-	// 	a.handleNotFound(w, r)
-	// 	return
-	// }
+	widget, exists := a.widgetByID[widgetID]
+	if !exists {
+		a.handleNotFound(w, r)
+		return
+	}
 
-	// widget, exists := a.widgetByID[widgetID]
+	if r.PathValue("path") != "content/" &&
+		r.PathValue("path") != "content" {
+		widget.handleRequest(w, r)
+		return
+	}
 
-	// if !exists {
-	// 	a.handleNotFound(w, r)
-	// 	return
-	// }
+	page, exists := a.pageByWidgetID[widgetID]
+	if !exists {
+		a.handleNotFound(w, r)
+		return
+	}
 
-	// widget.handleRequest(w, r)
+	page.mu.Lock()
+	defer page.mu.Unlock()
+
+	page.updateOutdatedWidgets()
+
+	w.Header().Set(
+		"Content-Type",
+		"text/html; charset=utf-8",
+	)
+	w.Write([]byte(widget.Render()))
 }
 
 func (a *application) StaticAssetPath(asset string) string {
