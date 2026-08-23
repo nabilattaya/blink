@@ -302,7 +302,7 @@ Download and extract the executable from the [latest release](https://github.com
 Glance can also be installed through the following 3rd party channels:
 * [Proxmox VE Helper Script](https://community-scripts.org/scripts/glance?id=glance)
 * [NixOS package](https://search.nixos.org/packages?channel=unstable&show=glance)
-* [Hostinger](https://www.hostinger.com/vps/docker/glance/)
+* [Hostinger](https://www.hostinger.com/vps/docker/glance)
 * [Coolify.io](https://coolify.io/docs/services/glance/)
 
 <hr>
@@ -316,7 +316,7 @@ Glance can also be installed through the following 3rd party channels:
 
 The most common cause of this is when using Pi-Hole, AdGuard Home or other ad-blocking DNS services, which by default have a fairly low rate limit. Depending on the number of widgets you have in a single page, this limit can very easily be exceeded. To fix this, increase the rate limit in the settings of your DNS service.
 
-If using Podman, in some rare cases the timeout may be resolved by adding the following to the bottom of your `docker-compose.yml` file:
+If using Podman, in some rare cases the timeout can be caused by an unknown issue, in which case it may be resolved by adding the following to the bottom of your `docker-compose.yml` file:
 ```yaml
 networks:
   podman:
@@ -437,7 +437,7 @@ To build for a specific OS and architecture, run:
 GOOS=linux GOARCH=amd64 go build -o build/glance .
 ```
 
-[*click here for a full list of GOOS and GOARCH combinations*](https://go.dev/doc/install/source#:~:text=$GOOS%20and%20GOARCH)
+[*click here for a full list of GOOS and GOARCH combinations*](https://go.dev/doc/install/source#:~:text=$GOOS%20and%20$GOARCH)
 
 Alternatively, if you just want to run the app without creating a binary, like when you're testing out changes, you can run:
 
