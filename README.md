@@ -14,6 +14,8 @@
 
 <p align="center">A lightweight, highly customizable dashboard that displays<br> your feeds in a beautiful, streamlined interface</p>
 
+> **Blink** is a Glance fork that adds opt-in, per-widget live refreshing without requiring a full page reload.
+
 ![](docs/images/readme-main-image.png)
 
 ## Features
@@ -29,6 +31,15 @@
 * Server stats
 * Custom widgets
 * [and many more...](docs/configuration.md#configuring-glance)
+
+### Native live refresh
+* Add `refresh: <duration>` to any native widget to refresh only that widget in place
+* Keeps the existing `cache:` behavior intact: `refresh:` controls how often the browser refreshes the widget, while `cache:` controls when its upstream data is fetched again
+* Refresh requests update only the requested widget rather than re-rendering the entire page
+* Works with widgets nested inside `group` and `split-column` containers
+* Pauses refresh timers while the tab is hidden and catches up when the page becomes visible again
+* Retries failed refreshes at 30 seconds, 1 minute, 2 minutes, and 5 minutes before returning to the configured interval
+* Re-initializes widget UI behavior after replacement, including carousels, relative timestamps, lazy images, collapsible content, and truncated-title tooltips
 
 ### Fast and lightweight
 * Low memory usage
@@ -58,6 +69,28 @@ Easily create your own theme by tweaking a few numbers or choose from one of the
 
 ## Configuration
 Configuration is done through YAML files, to learn more about how the layout works, how to add more pages and how to configure widgets, visit the [configuration documentation](docs/configuration.md#configuring-glance).
+
+### Live widget refreshing
+Live refresh is opt-in per widget. Add a `refresh:` duration using the same duration syntax used elsewhere in Glance:
+
+```yaml
+- type: rss
+  title: News
+  cache: 15m
+  refresh: 15m
+  feeds:
+    - url: https://example.com/feed.xml
+```
+
+`refresh:` and `cache:` have separate jobs:
+
+* `refresh:` is the browser-side interval. When it expires, Blink requests a newly rendered fragment for that widget and replaces it in place.
+* `cache:` is the server-side data freshness interval. When the refresh request arrives, Blink only fetches upstream data if that widget's cache is due; otherwise it renders the currently cached data.
+
+For most API-backed widgets, using the same value for `cache:` and `refresh:` is a sensible default. A shorter `refresh:` interval than `cache:` will re-render the widget more often without necessarily fetching new upstream data. A longer `refresh:` interval can leave a widget displaying older data even after its server-side cache has expired, until the next browser refresh occurs.
+
+Widgets without `refresh:` keep the original Glance behavior and do not make periodic widget refresh requests. Existing client-side dynamic behavior such as clocks and relative timestamps continues to work normally.
+
 <details>
 <summary><strong>Preview example configuration file</strong></summary>
 <br>
@@ -269,7 +302,7 @@ Download and extract the executable from the [latest release](https://github.com
 Glance can also be installed through the following 3rd party channels:
 * [Proxmox VE Helper Script](https://community-scripts.org/scripts/glance?id=glance)
 * [NixOS package](https://search.nixos.org/packages?channel=unstable&show=glance)
-* [Hostinger](https://www.hostinger.com/vps/docker/glance)
+* [Hostinger](https://www.hostinger.com/vps/docker/glance/)
 * [Coolify.io](https://coolify.io/docs/services/glance/)
 
 <hr>
@@ -283,7 +316,7 @@ Glance can also be installed through the following 3rd party channels:
 
 The most common cause of this is when using Pi-Hole, AdGuard Home or other ad-blocking DNS services, which by default have a fairly low rate limit. Depending on the number of widgets you have in a single page, this limit can very easily be exceeded. To fix this, increase the rate limit in the settings of your DNS service.
 
-If using Podman, in some rare cases the timeout can be caused by an unknown issue, in which case it may be resolved by adding the following to the bottom of your `docker-compose.yml` file:
+If using Podman, in some rare cases the timeout may be resolved by adding the following to the bottom of your `docker-compose.yml` file:
 ```yaml
 networks:
   podman:
@@ -309,12 +342,34 @@ The most common cause of this is having a `pages` key in your `glance.yml` and t
 ## FAQ
 <details>
 <summary><strong>Does the information on the page update automatically?</strong></summary>
-No, a page refresh is required to update the information. Some things do dynamically update where it makes sense, like the clock widget and the relative time showing how long ago something happened.
+
+Yes, when you opt a widget into Blink's live refresh behavior with `refresh:`. Only that widget is requested and replaced; the rest of the page stays in place.
+
+```yaml
+- type: weather
+  location: London, United Kingdom
+  cache: 15m
+  refresh: 15m
+```
+
+Widgets without `refresh:` retain the original behavior and update when the page is loaded or reloaded. Some client-side elements, such as clocks and relative timestamps, continue to update dynamically regardless.
 </details>
 
 <details>
 <summary><strong>How frequently do widgets update?</strong></summary>
-No requests are made periodically in the background, information is only fetched upon loading the page and then cached. The default cache lifetime is different for each widget and can be configured.
+
+There are now two independent intervals:
+
+* `refresh:` controls how frequently the browser requests and replaces that widget's rendered HTML.
+* `cache:` controls how frequently Blink is allowed to fetch new upstream data for the widget.
+
+A refresh request does not force an upstream fetch when the widget cache is still valid. Widgets without `refresh:` do not make periodic live-refresh requests.
+</details>
+
+<details>
+<summary><strong>What happens to live refresh when the tab is in the background?</strong></summary>
+
+Blink pauses widget refresh timers while the document is hidden. When the page becomes visible again, widgets that are overdue refresh immediately; otherwise their timers resume with the remaining interval. This avoids unnecessary background requests while keeping the dashboard current when you return to it.
 </details>
 
 <details>
@@ -382,7 +437,7 @@ To build for a specific OS and architecture, run:
 GOOS=linux GOARCH=amd64 go build -o build/glance .
 ```
 
-[*click here for a full list of GOOS and GOARCH combinations*](https://go.dev/doc/install/source#:~:text=$GOOS%20and%20$GOARCH)
+[*click here for a full list of GOOS and GOARCH combinations*](https://go.dev/doc/install/source#:~:text=$GOOS%20and%20GOARCH)
 
 Alternatively, if you just want to run the app without creating a binary, like when you're testing out changes, you can run:
 
