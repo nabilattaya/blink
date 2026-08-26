@@ -117,6 +117,7 @@ test('popover setup and cleanup work on newly inserted subtrees', async ({ page 
         const popovers = await import(url);
         const root = document.createElement('div');
         root.id = 'popover-test-root';
+        root.style.cssText = 'position:fixed;top:8px;left:8px;z-index:2147483647;';
         root.innerHTML = '<button id="popover-test" data-popover-type="text" data-popover-text="Refreshed popover">Hover</button>';
         document.body.append(root);
         popovers.setupPopovers(root);
