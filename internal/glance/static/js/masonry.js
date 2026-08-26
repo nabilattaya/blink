@@ -1,10 +1,13 @@
-
 import { clamp } from "./utils.js";
 
 const observers = new WeakMap();
 
 export function cleanupMasonries(root) {
+<<<<<<< HEAD
     const masonryContainers = root.getElementsByClassName("masonry");
+=======
+    const masonryContainers = root.querySelectorAll(".masonry");
+>>>>>>> 0914218 (refactor: make masonry lifecycle refresh-safe)
 
     for (let i = 0; i < masonryContainers.length; i++) {
         const container = masonryContainers[i];
@@ -20,7 +23,11 @@ export function cleanupMasonries(root) {
 }
 
 export function setupMasonries(root = document) {
+<<<<<<< HEAD
     const masonryContainers = root.getElementsByClassName("masonry");
+=======
+    const masonryContainers = root.querySelectorAll(".masonry");
+>>>>>>> 0914218 (refactor: make masonry lifecycle refresh-safe)
 
     for (let i = 0; i < masonryContainers.length; i++) {
         const container = masonryContainers[i];
@@ -39,6 +46,14 @@ export function setupMasonries(root = document) {
 
         const render = function() {
             if (!container.isConnected) {
+<<<<<<< HEAD
+=======
+                const observer = observers.get(container);
+                if (observer !== undefined) {
+                    observer.disconnect();
+                    observers.delete(container);
+                }
+>>>>>>> 0914218 (refactor: make masonry lifecycle refresh-safe)
                 return;
             }
 
