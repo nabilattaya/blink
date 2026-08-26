@@ -1,4 +1,9 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from '@playwright/test';
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = path.resolve(configDir, '../..');
 
 export default defineConfig({
     testDir: '.',
@@ -16,6 +21,7 @@ export default defineConfig({
     },
     webServer: {
         command: 'go run . --config tests/browser/glance.yml',
+        cwd: repositoryRoot,
         url: 'http://127.0.0.1:18080/api/healthz',
         reuseExistingServer: false,
         timeout: 120_000,
