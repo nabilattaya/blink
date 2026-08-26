@@ -1,7 +1,6 @@
 package glance
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 	"time"
@@ -52,7 +51,7 @@ func (a *application) handleNativeWidgetContentRequest(
 
 	now := time.Now()
 	if widget.requiresUpdate(&now) {
-		widget.update(context.Background())
+		widget.update(r.Context())
 	}
 
 	w.Header().Set(
