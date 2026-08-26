@@ -1,11 +1,32 @@
-
 import { clamp } from "./utils.js";
 
-export function setupMasonries() {
-    const masonryContainers = document.getElementsByClassName("masonry");
+const observers = new WeakMap();
+
+export function cleanupMasonries(root) {
+    const masonryContainers = root.querySelectorAll(".masonry");
 
     for (let i = 0; i < masonryContainers.length; i++) {
         const container = masonryContainers[i];
+        const observer = observers.get(container);
+
+        if (observer === undefined) {
+            continue;
+        }
+
+        observer.disconnect();
+        observers.delete(container);
+    }
+}
+
+export function setupMasonries(root = document) {
+    const masonryContainers = root.querySelectorAll(".masonry");
+
+    for (let i = 0; i < masonryContainers.length; i++) {
+        const container = masonryContainers[i];
+
+        if (observers.has(container)) {
+            continue;
+        }
 
         const options = {
             minColumnWidth: container.dataset.minColumnWidth || 330,
@@ -16,6 +37,15 @@ export function setupMasonries() {
         let previousColumnsCount = 0;
 
         const render = function() {
+            if (!container.isConnected) {
+                const observer = observers.get(container);
+                if (observer !== undefined) {
+                    observer.disconnect();
+                    observers.delete(container);
+                }
+                return;
+            }
+
             const columnsCount = clamp(
                 Math.floor(container.offsetWidth / options.minColumnWidth),
                 1,
@@ -45,6 +75,7 @@ export function setupMasonries() {
         };
 
         const observer = new ResizeObserver(() => requestAnimationFrame(render));
+        observers.set(container, observer);
         observer.observe(container);
     }
 }
