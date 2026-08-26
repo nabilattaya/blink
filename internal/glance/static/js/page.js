@@ -466,7 +466,7 @@ function attachExpandToggleButton(collapsibleContainer) {
 
         collapsibleContainer.classList.remove("container-expanded");
         button.classList.remove("container-expanded");
-        textNode.nodeValue = showLessText;
+        textNode.nodeValue = showMoreText;
 
         const topAfter = button.getClientRects()[0].top;
 
@@ -779,7 +779,7 @@ function setupClocks(root = document) {
 
 async function setupCalendars(root = document) {
     const elems = queryElements(root, ".calendar")
-        .filter((element) => element.component === undefined);
+        .filter((element) => !Object.prototype.hasOwnProperty.call(element, "component"));
     if (elems.length == 0) return;
 
     // TODO: implement prefetching, currently loads as a nasty waterfall of requests
