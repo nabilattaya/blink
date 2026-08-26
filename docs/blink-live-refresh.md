@@ -59,7 +59,7 @@ Blink also:
 - pauses periodic refresh while the document is hidden;
 - aborts in-flight fragment work when the page becomes hidden;
 - catches overdue widgets up when the page becomes visible again;
-- runs at most one fragment refresh request at a time per page/tab, queueing overdue widgets to match Glance's page-level locking;
+- limits simultaneous fragment refreshes so equal intervals do not create an unrestricted request burst;
 - times out stalled fragment requests and retries transient failures;
 - uses retry delays of 30 seconds, 1 minute, 2 minutes, and 5 minutes before returning to the configured interval.
 
