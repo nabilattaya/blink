@@ -8,6 +8,7 @@ let activeTarget = null;
 let pendingTarget = null;
 let cleanupOnHidePopover = null;
 let togglePopoverTimeout = null;
+const initializedTargets = new WeakSet();
 
 const containerElement = document.createElement("div");
 const containerComputedStyle = getComputedStyle(containerElement);
@@ -30,7 +31,7 @@ const observer = new ResizeObserver(queueRepositionContainer);
 
 function handleMouseEnter(event) {
     clearTogglePopoverTimeout();
-    const target = event.target;
+    const target = event.currentTarget || event.target;
     pendingTarget = target;
     const showDelay = target.dataset.popoverShowDelay || defaultShowDelayMs;
 
@@ -50,7 +51,7 @@ function handleMouseEnter(event) {
 
 function handleMouseLeave(event) {
     clearTogglePopoverTimeout();
-    const target = activeTarget || event.target;
+    const target = activeTarget || event.currentTarget || event.target;
     togglePopoverTimeout = setTimeout(hidePopover, target.dataset.popoverHideDelay || defaultHideDelayMs);
 }
 
@@ -184,13 +185,31 @@ function handleHidePopoverOnEscape(event) {
     }
 }
 
+function containsTarget(root, target) {
+    if (target === null) return false;
+    if (root === target) return true;
+    return typeof root.contains === "function" && root.contains(target);
+}
+
 export function cleanupPopovers(root) {
-    if (root.contains(pendingTarget)) {
+    if (containsTarget(root, pendingTarget)) {
         pendingTarget = null;
         clearTogglePopoverTimeout();
     }
 
+    if (containsTarget(root, activeTarget)) {
+        hidePopover();
+    }
+}
+        pendingTarget = null;
+        clearTogglePopoverTimeout();
+    }
+
+<<<<<<< HEAD
     if (root.contains(activeTarget)) {
+=======
+    if (containsTarget(root, activeTarget)) {
+>>>>>>> 80f3a6a (refactor: make popovers refresh-safe)
         hidePopover();
     }
 }
@@ -200,6 +219,11 @@ export function setupPopovers(root = document) {
 
     for (let i = 0; i < targets.length; i++) {
         const target = targets[i];
+
+        if (initializedTargets.has(target)) {
+            continue;
+        }
+        initializedTargets.add(target);
 
         if (target.dataset.popoverTrigger === "click") {
             target.addEventListener("click", handleMouseEnter);
