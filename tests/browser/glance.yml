@@ -1,0 +1,20 @@
+server:
+  host: 127.0.0.1
+  port: 18080
+
+pages:
+  - name: Browser Test
+    columns:
+      - size: full
+        widgets:
+          - type: clock
+            refresh: 1s
+            hour-format: 12h
+          - type: calendar
+            refresh: 1s
+          - type: to-do
+            id: blink-browser-test
+            refresh: 1s
+          - type: search
+            refresh: 1s
+            search-engine: https://example.com/?q={QUERY}
