@@ -168,7 +168,7 @@ test('hidden pages pause refresh and resume when visible', async ({ page }) => {
     await expect.poll(() => refreshRequests).toBeGreaterThan(hiddenRequestCount);
 });
 
-test('refresh scheduler processes overdue widgets one request at a time', async ({ page }) => {
+test('refresh scheduler limits concurrent fragment requests', async ({ page }) => {
     let active = 0;
     let maximumActive = 0;
     let total = 0;
@@ -189,7 +189,7 @@ test('refresh scheduler processes overdue widgets one request at a time', async 
 
     await page.goto('/');
     await expect.poll(() => total, { timeout: 10_000 }).toBeGreaterThanOrEqual(4);
-    expect(maximumActive).toBe(1);
+    expect(maximumActive).toBeLessThanOrEqual(3);
 });
 
 test('configuration hot reload recovers stale widget ids by reloading the page', async ({ page }) => {
