@@ -1,5 +1,6 @@
-import { setupPopovers } from './popover.js';
-import { setupMasonries } from './masonry.js';
+import { cleanupPopovers, setupPopovers } from './popover.js';
+import { cleanupMasonries, setupMasonries } from './masonry.js';
+import { setupNativeWidgetRefresh } from './native-refresh.js';
 import { throttledDebounce, isElementVisible, openURLInNewTab } from './utils.js';
 import { elem, find, findAll } from './templating.js';
 
@@ -10,6 +11,16 @@ async function fetchPageContent(pageData) {
     const content = await response.text();
 
     return content;
+}
+
+function queryElements(root, selector) {
+    const elements = Array.from(root.querySelectorAll(selector));
+
+    if (root instanceof Element && root.matches(selector)) {
+        elements.unshift(root);
+    }
+
+    return elements;
 }
 
 let carouselResizeListenerInitialized = false;
@@ -50,10 +61,10 @@ function updateCarouselSideCutoffs(carousel) {
 }
 
 function setupCarousels(root = document) {
-    const carouselElements =
-        root.querySelectorAll(
-            ".carousel-container"
-        );
+    const carouselElements = queryElements(
+        root,
+        ".carousel-container"
+    );
 
     if (carouselElements.length == 0) {
         return;
@@ -172,11 +183,31 @@ function updateRelativeTimeForElements(elements)
     }
 }
 
-function setupSearchBoxes() {
-    const searchWidgets = document.getElementsByClassName("search");
+let searchShortcutInitialized = false;
+
+function setupSearchBoxes(root = document) {
+    const searchWidgets = queryElements(root, ".search");
 
     if (searchWidgets.length == 0) {
         return;
+    }
+
+    if (!searchShortcutInitialized) {
+        document.addEventListener("keydown", (event) => {
+            if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+            if (event.code != "KeyS") return;
+
+            const inputs = Array.from(
+                document.querySelectorAll(".search .search-input")
+            );
+            const inputElement = inputs.find(isElementVisible) || inputs[0];
+
+            if (inputElement === undefined) return;
+
+            inputElement.focus();
+            event.preventDefault();
+        });
+        searchShortcutInitialized = true;
     }
 
     for (let i = 0; i < searchWidgets.length; i++) {
@@ -261,22 +292,8 @@ function setupSearchBoxes() {
             changeCurrentBang(null);
         };
 
-        inputElement.addEventListener("focus", () => {
-            document.addEventListener("keydown", handleKeyDown);
-            document.addEventListener("input", handleInput);
-        });
-        inputElement.addEventListener("blur", () => {
-            document.removeEventListener("keydown", handleKeyDown);
-            document.removeEventListener("input", handleInput);
-        });
-
-        document.addEventListener("keydown", (event) => {
-            if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
-            if (event.code != "KeyS") return;
-
-            inputElement.focus();
-            event.preventDefault();
-        });
+        inputElement.addEventListener("keydown", handleKeyDown);
+        inputElement.addEventListener("input", handleInput);
 
         kbdElement.addEventListener("mousedown", () => {
             requestAnimationFrame(() => inputElement.focus());
@@ -333,8 +350,8 @@ function setupDynamicRelativeTime() {
     });
 }
 
-function setupGroups() {
-    const groups = document.getElementsByClassName("widget-type-group");
+function setupGroups(root = document) {
+    const groups = queryElements(root, ".widget-type-group");
 
     if (groups.length == 0) {
         return;
@@ -394,7 +411,7 @@ function setupGroups() {
 }
 
 function setupLazyImages(root = document) {
-    const images = root.querySelectorAll("img[loading=lazy]");
+    const images = queryElements(root, "img[loading=lazy]");
 
     if (images.length == 0) {
         return;
@@ -449,7 +466,7 @@ function attachExpandToggleButton(collapsibleContainer) {
 
         collapsibleContainer.classList.remove("container-expanded");
         button.classList.remove("container-expanded");
-        textNode.nodeValue = showMoreText;
+        textNode.nodeValue = showLessText;
 
         const topAfter = button.getClientRects()[0].top;
 
@@ -469,7 +486,10 @@ function attachExpandToggleButton(collapsibleContainer) {
 
 
 function setupCollapsibleLists(root = document) {
-    const collapsibleLists = root.querySelectorAll(".list.collapsible-container");
+    const collapsibleLists = queryElements(
+        root,
+        ".list.collapsible-container"
+    );
 
     if (collapsibleLists.length == 0) {
         return;
@@ -502,8 +522,13 @@ function setupCollapsibleLists(root = document) {
     }
 }
 
-function setupCollapsibleGrids() {
-    const collapsibleGridElements = document.querySelectorAll(".cards-grid.collapsible-container");
+const collapsibleGridObservers = new WeakMap();
+
+function setupCollapsibleGrids(root = document) {
+    const collapsibleGridElements = queryElements(
+        root,
+        ".cards-grid.collapsible-container"
+    );
 
     if (collapsibleGridElements.length == 0) {
         return;
@@ -512,7 +537,10 @@ function setupCollapsibleGrids() {
     for (let i = 0; i < collapsibleGridElements.length; i++) {
         const gridElement = collapsibleGridElements[i];
 
-        if (gridElement.dataset.collapseAfterRows === undefined) {
+        if (
+            gridElement.dataset.collapseAfterRows === undefined ||
+            collapsibleGridObservers.has(gridElement)
+        ) {
             continue;
         }
 
@@ -573,14 +601,30 @@ function setupCollapsibleGrids() {
             resolveCollapsibleItems();
         });
 
+        collapsibleGridObservers.set(gridElement, observer);
         afterContentReady(() => observer.observe(gridElement));
     }
 }
 
 const contentReadyCallbacks = [];
+let contentReady = false;
 
 function afterContentReady(callback) {
+    if (contentReady) {
+        callback();
+        return;
+    }
+
     contentReadyCallbacks.push(callback);
+}
+
+function markContentReady() {
+    contentReady = true;
+
+    const callbacks = contentReadyCallbacks.splice(0);
+    for (let i = 0; i < callbacks.length; i++) {
+        callbacks[i]();
+    }
 }
 
 const weekDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -655,23 +699,29 @@ function zoneDiffText(diffInMinutes) {
     return { text: `${sign}${hours}h~`, title: `${hours} hour${hourSuffix} and ${minutes} minutes ${signText}` };
 }
 
-function setupClocks() {
-    const clocks = document.getElementsByClassName('clock');
+const clockTimers = new WeakMap();
+
+function setupClocks(root = document) {
+    const clocks = queryElements(root, '.clock');
 
     if (clocks.length == 0) {
         return;
     }
 
-    const updateCallbacks = [];
-
-    for (var i = 0; i < clocks.length; i++) {
+    for (let i = 0; i < clocks.length; i++) {
         const clock = clocks[i];
+
+        if (clockTimers.has(clock)) {
+            continue;
+        }
+
         const hourFormat = clock.dataset.hourFormat;
         const localTimeContainer = clock.querySelector('[data-local-time]');
         const localDateElement = localTimeContainer.querySelector('[data-date]');
         const localWeekdayElement = localTimeContainer.querySelector('[data-weekday]');
         const localYearElement = localTimeContainer.querySelector('[data-year]');
         const timeZoneContainers = clock.querySelectorAll('[data-time-in-zone]');
+        const updateCallbacks = [];
 
         const setLocalTime = makeSettableTimeElement(
             localTimeContainer.querySelector('[data-time]'),
@@ -685,7 +735,7 @@ function setupClocks() {
             localYearElement.textContent = now.getFullYear();
         });
 
-        for (var z = 0; z < timeZoneContainers.length; z++) {
+        for (let z = 0; z < timeZoneContainers.length; z++) {
             const timeZoneContainer = timeZoneContainers[z];
             const diffElement = timeZoneContainer.querySelector('[data-time-diff]');
 
@@ -697,27 +747,39 @@ function setupClocks() {
             updateCallbacks.push((now) => {
                 const { time, diffInMinutes } = timeInZone(now, timeZoneContainer.dataset.timeInZone);
                 setZoneTime(time);
-                const { text, title } = zoneDiffText(diffInMinutes);
-                diffElement.textContent = text;
-                diffElement.title = title;
+                const diff = zoneDiffText(diffInMinutes);
+                diffElement.textContent = diff.text || "";
+                diffElement.title = diff.title || "";
             });
         }
+
+        const updateClock = () => {
+            if (!clock.isConnected) {
+                clockTimers.delete(clock);
+                return;
+            }
+
+            const now = new Date();
+
+            for (let c = 0; c < updateCallbacks.length; c++) {
+                updateCallbacks[c](now);
+            }
+
+            const timer = setTimeout(
+                updateClock,
+                (60 - now.getSeconds()) * 1000
+            );
+            clockTimers.set(clock, timer);
+        };
+
+        clockTimers.set(clock, null);
+        updateClock();
     }
-
-    const updateClocks = () => {
-        const now = new Date();
-
-        for (var i = 0; i < updateCallbacks.length; i++)
-            updateCallbacks[i](now);
-
-        setTimeout(updateClocks, (60 - now.getSeconds()) * 1000);
-    };
-
-    updateClocks();
 }
 
-async function setupCalendars() {
-    const elems = document.getElementsByClassName("calendar");
+async function setupCalendars(root = document) {
+    const elems = queryElements(root, ".calendar")
+        .filter((element) => element.component === undefined);
     if (elems.length == 0) return;
 
     // TODO: implement prefetching, currently loads as a nasty waterfall of requests
@@ -727,8 +789,8 @@ async function setupCalendars() {
         calendar.default(elems[i]);
 }
 
-async function setupTodos() {
-    const elems = Array.from(document.getElementsByClassName("todo"));
+async function setupTodos(root = document) {
+    const elems = queryElements(root, ".todo");
     if (elems.length == 0) return;
 
     const todo = await import ('./todo.js');
@@ -738,227 +800,20 @@ async function setupTodos() {
     }
 }
 
-
 function setupRelativeTimeInElement(element) {
     updateRelativeTimeForElements(
-        element.querySelectorAll(
+        queryElements(
+            element,
             "[data-dynamic-relative-time]"
         )
     );
 }
 
-function setupRefreshedNativeWidget(widget) {
-    setupCarousels(widget);
-    setupRelativeTimeInElement(widget);
-    setupLazyImages(widget);
-    setupCollapsibleLists(widget);
-    setupTruncatedElementTitles(widget);
-}
-
-async function refreshNativeWidget(widget) {
-    const widgetID = widget.dataset.widgetId;
-
-    if (widgetID === undefined) {
-        return null;
-    }
-
-    const response = await fetch(
-        `${pageData.baseURL}/api/widgets/` +
-        `${widgetID}/content/`
-    );
-
-    if (!response.ok) {
-        throw new Error(
-            `widget ${widgetID}: HTTP ` +
-            response.status
-        );
-    }
-
-    const html = await response.text();
-    const template =
-        document.createElement("template");
-
-    template.innerHTML = html.trim();
-
-    const replacement =
-        template.content.firstElementChild;
-
-    if (
-        replacement === null ||
-        replacement.dataset.widgetId !== widgetID
-    ) {
-        throw new Error(
-            `widget ${widgetID}: invalid fragment`
-        );
-    }
-
-    widget.replaceWith(replacement);
-    setupRefreshedNativeWidget(replacement);
-
-    return replacement;
-}
-
-function setupNativeWidgetRefresh() {
-    const states = new Map();
-
-    const schedule = (state, delay) => {
-        clearTimeout(state.timer);
-
-        if (document.hidden) {
-            state.timer = null;
-            return;
-        }
-
-        state.timer = setTimeout(
-            () => refresh(state),
-            delay
-        );
-    };
-
-    const refresh = async (state) => {
-        if (state.running || document.hidden) {
-            return;
-        }
-
-        const widget = document.querySelector(
-            `[data-widget-id="${state.id}"]`
-        );
-
-        if (widget === null) {
-            states.delete(state.id);
-            return;
-        }
-
-        state.running = true;
-
-        let nextDelay = state.interval;
-
-        try {
-            const replacement =
-                await refreshNativeWidget(widget);
-
-            if (replacement !== null) {
-                const interval =
-                    parseInt(
-                        replacement.dataset.widgetRefresh
-                    );
-
-                if (
-                    Number.isFinite(interval) &&
-                    interval > 0
-                ) {
-                    state.interval = interval;
-                }
-            }
-
-            state.lastRefresh = Date.now();
-            state.failureCount = 0;
-            nextDelay = state.interval;
-        } catch (error) {
-            console.error(
-                "Failed to refresh native widget:",
-                error
-            );
-
-            const retryDelays = [
-                30 * 1000,
-                60 * 1000,
-                2 * 60 * 1000,
-                5 * 60 * 1000
-            ];
-
-            if (state.failureCount < retryDelays.length) {
-                nextDelay = Math.min(
-                    retryDelays[state.failureCount],
-                    state.interval
-                );
-            } else {
-                nextDelay = state.interval;
-            }
-
-            state.failureCount++;
-        } finally {
-            state.running = false;
-
-            if (states.has(state.id)) {
-                schedule(
-                    state,
-                    nextDelay
-                );
-            }
-        }
-    };
-
-    const discover = () => {
-        const widgets =
-            document.querySelectorAll(
-                "[data-widget-id]" +
-                "[data-widget-refresh]"
-            );
-
-        for (const widget of widgets) {
-            const id = widget.dataset.widgetId;
-            const interval =
-                parseInt(
-                    widget.dataset.widgetRefresh
-                );
-
-            if (
-                id === undefined ||
-                !Number.isFinite(interval) ||
-                interval <= 0 ||
-                states.has(id)
-            ) {
-                continue;
-            }
-
-            const state = {
-                id,
-                interval,
-                timer: null,
-                running: false,
-                lastRefresh: Date.now(),
-                failureCount: 0,
-            };
-
-            states.set(id, state);
-            schedule(state, interval);
-        }
-    };
-
-    discover();
-
-    document.addEventListener(
-        "visibilitychange",
-        () => {
-            const now = Date.now();
-
-            for (const state of states.values()) {
-                clearTimeout(state.timer);
-                state.timer = null;
-
-                if (document.hidden) {
-                    continue;
-                }
-
-                const elapsed =
-                    now - state.lastRefresh;
-
-                if (elapsed >= state.interval) {
-                    refresh(state);
-                } else {
-                    schedule(
-                        state,
-                        state.interval - elapsed
-                    );
-                }
-            }
-        }
-    );
-}
-
 function setupTruncatedElementTitles(root = document) {
-    const elements = root.querySelectorAll(".text-truncate, .single-line-titles .title, .text-truncate-2-lines, .text-truncate-3-lines");
+    const elements = queryElements(
+        root,
+        ".text-truncate, .single-line-titles .title, .text-truncate-2-lines, .text-truncate-3-lines"
+    );
 
     if (elements.length == 0) {
         return;
@@ -968,6 +823,58 @@ function setupTruncatedElementTitles(root = document) {
         const element = elements[i];
         if (element.getAttribute("title") === null)
             element.title = element.innerText.trim().replace(/\s+/g, " ");
+    }
+}
+
+async function initializeContent(root = document) {
+    setupPopovers(root);
+    setupClocks(root);
+    await setupCalendars(root);
+    await setupTodos(root);
+    setupCarousels(root);
+    setupSearchBoxes(root);
+    setupCollapsibleLists(root);
+    setupCollapsibleGrids(root);
+    setupGroups(root);
+    setupMasonries(root);
+    setupRelativeTimeInElement(root);
+    setupLazyImages(root);
+
+    setTimeout(() => {
+        setupTruncatedElementTitles(root);
+    }, 50);
+}
+
+function cleanupContent(root) {
+    cleanupPopovers(root);
+    cleanupMasonries(root);
+
+    const clocks = queryElements(root, '.clock');
+    for (let i = 0; i < clocks.length; i++) {
+        const timer = clockTimers.get(clocks[i]);
+        if (timer !== undefined && timer !== null) {
+            clearTimeout(timer);
+        }
+        clockTimers.delete(clocks[i]);
+    }
+
+    const grids = queryElements(
+        root,
+        ".cards-grid.collapsible-container"
+    );
+    for (let i = 0; i < grids.length; i++) {
+        const observer = collapsibleGridObservers.get(grids[i]);
+        if (observer !== undefined) {
+            observer.disconnect();
+            collapsibleGridObservers.delete(grids[i]);
+        }
+    }
+
+    const calendars = queryElements(root, '.calendar');
+    for (let i = 0; i < calendars.length; i++) {
+        if (typeof calendars[i].component?.suspend === "function") {
+            calendars[i].component.suspend();
+        }
     }
 }
 
@@ -1057,30 +964,17 @@ async function setupPage() {
     pageContentElement.innerHTML = pageContent;
 
     try {
-        setupPopovers();
-        setupClocks()
-        await setupCalendars();
-        await setupTodos();
-        setupCarousels();
-        setupSearchBoxes();
-        setupCollapsibleLists();
-        setupCollapsibleGrids();
-        setupGroups();
-        setupMasonries();
+        await initializeContent(document);
         setupDynamicRelativeTime();
-        setupLazyImages();
-        setupNativeWidgetRefresh();
+        setupNativeWidgetRefresh({
+            baseURL: pageData.baseURL,
+            initializeContent,
+            cleanupContent,
+        });
     } finally {
         pageElement.classList.add("content-ready");
         pageElement.setAttribute("aria-busy", "false");
-
-        for (let i = 0; i < contentReadyCallbacks.length; i++) {
-            contentReadyCallbacks[i]();
-        }
-
-        setTimeout(() => {
-            setupTruncatedElementTitles();
-        }, 50);
+        markContentReady();
 
         setTimeout(() => {
             document.body.classList.add("page-columns-transitioned");
