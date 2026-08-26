@@ -13,41 +13,125 @@ async function fetchPageContent(pageData) {
     return content;
 }
 
-const carouselResizeListeners = new WeakMap();
+function queryElements(root, selector) {
+    const elements = Array.from(root.querySelectorAll(selector));
+
+    if (root instanceof Element && root.matches(selector)) {
+        elements.unshift(root);
+    }
+
+    return elements;
+}
+
+let carouselResizeListenerInitialized = false;
+
+function updateCarouselSideCutoffs(carousel) {
+    const itemsContainer =
+        carousel.getElementsByClassName(
+            "carousel-items-container"
+        )[0];
+
+    if (itemsContainer === undefined) {
+        return;
+    }
+
+    if (itemsContainer.scrollLeft != 0) {
+        carousel.classList.add(
+            "show-left-cutoff"
+        );
+    } else {
+        carousel.classList.remove(
+            "show-left-cutoff"
+        );
+    }
+
+    if (
+        Math.ceil(itemsContainer.scrollLeft) +
+            itemsContainer.clientWidth <
+        itemsContainer.scrollWidth
+    ) {
+        carousel.classList.add(
+            "show-right-cutoff"
+        );
+    } else {
+        carousel.classList.remove(
+            "show-right-cutoff"
+        );
+    }
+}
 
 function setupCarousels(root = document) {
-    const carouselElements = root.getElementsByClassName("carousel-container");
+    const carouselElements = queryElements(
+        root,
+        ".carousel-container"
+    );
 
     if (carouselElements.length == 0) {
         return;
     }
 
-    for (let i = 0; i < carouselElements.length; i++) {
+    if (!carouselResizeListenerInitialized) {
+        const updateAllCarouselSideCutoffs =
+            throttledDebounce(() => {
+                const currentCarousels =
+                    document.getElementsByClassName(
+                        "carousel-container"
+                    );
+
+                for (
+                    let i = 0;
+                    i < currentCarousels.length;
+                    i++
+                ) {
+                    updateCarouselSideCutoffs(
+                        currentCarousels[i]
+                    );
+                }
+            }, 20, 100);
+
+        window.addEventListener(
+            "resize",
+            updateAllCarouselSideCutoffs
+        );
+
+        carouselResizeListenerInitialized = true;
+    }
+
+    for (
+        let i = 0;
+        i < carouselElements.length;
+        i++
+    ) {
         const carousel = carouselElements[i];
-        carousel.classList.add("show-right-cutoff");
-        const itemsContainer = carousel.getElementsByClassName("carousel-items-container")[0];
+        const itemsContainer =
+            carousel.getElementsByClassName(
+                "carousel-items-container"
+            )[0];
 
-        const determineSideCutoffs = () => {
-            if (itemsContainer.scrollLeft != 0) {
-                carousel.classList.add("show-left-cutoff");
-            } else {
-                carousel.classList.remove("show-left-cutoff");
-            }
-
-            if (Math.ceil(itemsContainer.scrollLeft) + itemsContainer.clientWidth < itemsContainer.scrollWidth) {
-                carousel.classList.add("show-right-cutoff");
-            } else {
-                carousel.classList.remove("show-right-cutoff");
-            }
+        if (itemsContainer === undefined) {
+            continue;
         }
 
-        const determineSideCutoffsRateLimited = throttledDebounce(determineSideCutoffs, 20, 100);
+        carousel.classList.add(
+            "show-right-cutoff"
+        );
 
-        itemsContainer.addEventListener("scroll", determineSideCutoffsRateLimited);
-        window.addEventListener("resize", determineSideCutoffsRateLimited);
-        carouselResizeListeners.set(carousel, determineSideCutoffsRateLimited);
+        const determineSideCutoffs = () => {
+            updateCarouselSideCutoffs(carousel);
+        };
 
-        afterContentReady(determineSideCutoffs);
+        itemsContainer.addEventListener(
+            "scroll",
+            throttledDebounce(
+                determineSideCutoffs,
+                20,
+                100
+            )
+        );
+
+        afterContentReady(
+            determineSideCutoffs
+        );
     }
 }
 
@@ -99,25 +183,31 @@ function updateRelativeTimeForElements(elements)
     }
 }
 
+let searchShortcutInitialized = false;
+
 function setupSearchBoxes(root = document) {
-    const searchWidgets = root.getElementsByClassName("search");
+    const searchWidgets = queryElements(root, ".search");
 
     if (searchWidgets.length == 0) {
         return;
     }
 
-    if (root === document) {
+    if (!searchShortcutInitialized) {
         document.addEventListener("keydown", (event) => {
             if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
             if (event.code != "KeyS") return;
 
-            const inputs = Array.from(document.querySelectorAll(".search .search-input"));
+            const inputs = Array.from(
+                document.querySelectorAll(".search .search-input")
+            );
             const inputElement = inputs.find(isElementVisible) || inputs[0];
+
             if (inputElement === undefined) return;
 
             inputElement.focus();
             event.preventDefault();
         });
+        searchShortcutInitialized = true;
     }
 
     for (let i = 0; i < searchWidgets.length; i++) {
@@ -215,10 +305,18 @@ function setupDynamicRelativeTime() {
     const updateInterval = 60 * 1000;
     let lastUpdateTime = Date.now();
 
-    updateRelativeTimeForElements(document.querySelectorAll("[data-dynamic-relative-time]"));
+    const updateElements = () => {
+        updateRelativeTimeForElements(
+            document.querySelectorAll(
+                "[data-dynamic-relative-time]"
+            )
+        );
+    };
+
+    updateElements();
 
     const updateElementsAndTimestamp = () => {
-        updateRelativeTimeForElements(document.querySelectorAll("[data-dynamic-relative-time]"));
+        updateElements();
         lastUpdateTime = Date.now();
     };
 
@@ -253,7 +351,7 @@ function setupDynamicRelativeTime() {
 }
 
 function setupGroups(root = document) {
-    const groups = root.getElementsByClassName("widget-type-group");
+    const groups = queryElements(root, ".widget-type-group");
 
     if (groups.length == 0) {
         return;
@@ -313,7 +411,7 @@ function setupGroups(root = document) {
 }
 
 function setupLazyImages(root = document) {
-    const images = root.querySelectorAll("img[loading=lazy]");
+    const images = queryElements(root, "img[loading=lazy]");
 
     if (images.length == 0) {
         return;
@@ -368,7 +466,7 @@ function attachExpandToggleButton(collapsibleContainer) {
 
         collapsibleContainer.classList.remove("container-expanded");
         button.classList.remove("container-expanded");
-        textNode.nodeValue = showMoreText;
+        textNode.nodeValue = showLessText;
 
         const topAfter = button.getClientRects()[0].top;
 
@@ -388,7 +486,10 @@ function attachExpandToggleButton(collapsibleContainer) {
 
 
 function setupCollapsibleLists(root = document) {
-    const collapsibleLists = root.querySelectorAll(".list.collapsible-container");
+    const collapsibleLists = queryElements(
+        root,
+        ".list.collapsible-container"
+    );
 
     if (collapsibleLists.length == 0) {
         return;
@@ -424,7 +525,10 @@ function setupCollapsibleLists(root = document) {
 const collapsibleGridObservers = new WeakMap();
 
 function setupCollapsibleGrids(root = document) {
-    const collapsibleGridElements = root.querySelectorAll(".cards-grid.collapsible-container");
+    const collapsibleGridElements = queryElements(
+        root,
+        ".cards-grid.collapsible-container"
+    );
 
     if (collapsibleGridElements.length == 0) {
         return;
@@ -433,7 +537,10 @@ function setupCollapsibleGrids(root = document) {
     for (let i = 0; i < collapsibleGridElements.length; i++) {
         const gridElement = collapsibleGridElements[i];
 
-        if (gridElement.dataset.collapseAfterRows === undefined) {
+        if (
+            gridElement.dataset.collapseAfterRows === undefined ||
+            collapsibleGridObservers.has(gridElement)
+        ) {
             continue;
         }
 
@@ -511,6 +618,15 @@ function afterContentReady(callback) {
     contentReadyCallbacks.push(callback);
 }
 
+function markContentReady() {
+    contentReady = true;
+
+    const callbacks = contentReadyCallbacks.splice(0);
+    for (let i = 0; i < callbacks.length; i++) {
+        callbacks[i]();
+    }
+}
+
 const weekDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -586,21 +702,26 @@ function zoneDiffText(diffInMinutes) {
 const clockTimers = new WeakMap();
 
 function setupClocks(root = document) {
-    const clocks = root.getElementsByClassName('clock');
+    const clocks = queryElements(root, '.clock');
 
     if (clocks.length == 0) {
         return;
     }
 
-    for (var i = 0; i < clocks.length; i++) {
+    for (let i = 0; i < clocks.length; i++) {
         const clock = clocks[i];
-        const updateCallbacks = [];
+
+        if (clockTimers.has(clock)) {
+            continue;
+        }
+
         const hourFormat = clock.dataset.hourFormat;
         const localTimeContainer = clock.querySelector('[data-local-time]');
         const localDateElement = localTimeContainer.querySelector('[data-date]');
         const localWeekdayElement = localTimeContainer.querySelector('[data-weekday]');
         const localYearElement = localTimeContainer.querySelector('[data-year]');
         const timeZoneContainers = clock.querySelectorAll('[data-time-in-zone]');
+        const updateCallbacks = [];
 
         const setLocalTime = makeSettableTimeElement(
             localTimeContainer.querySelector('[data-time]'),
@@ -614,7 +735,7 @@ function setupClocks(root = document) {
             localYearElement.textContent = now.getFullYear();
         });
 
-        for (var z = 0; z < timeZoneContainers.length; z++) {
+        for (let z = 0; z < timeZoneContainers.length; z++) {
             const timeZoneContainer = timeZoneContainers[z];
             const diffElement = timeZoneContainer.querySelector('[data-time-diff]');
 
@@ -626,27 +747,39 @@ function setupClocks(root = document) {
             updateCallbacks.push((now) => {
                 const { time, diffInMinutes } = timeInZone(now, timeZoneContainer.dataset.timeInZone);
                 setZoneTime(time);
-                const { text, title } = zoneDiffText(diffInMinutes);
-                diffElement.textContent = text;
-                diffElement.title = title;
+                const diff = zoneDiffText(diffInMinutes);
+                diffElement.textContent = diff.text || "";
+                diffElement.title = diff.title || "";
             });
         }
 
-        const updateClocks = () => {
+        const updateClock = () => {
+            if (!clock.isConnected) {
+                clockTimers.delete(clock);
+                return;
+            }
+
             const now = new Date();
 
-            for (var i = 0; i < updateCallbacks.length; i++)
-                updateCallbacks[i](now);
+            for (let c = 0; c < updateCallbacks.length; c++) {
+                updateCallbacks[c](now);
+            }
 
-            clockTimers.set(clock, setTimeout(updateClocks, (60 - now.getSeconds()) * 1000));
+            const timer = setTimeout(
+                updateClock,
+                (60 - now.getSeconds()) * 1000
+            );
+            clockTimers.set(clock, timer);
         };
 
-        updateClocks();
+        clockTimers.set(clock, null);
+        updateClock();
     }
 }
 
 async function setupCalendars(root = document) {
-    const elems = Array.from(root.getElementsByClassName("calendar"));
+    const elems = queryElements(root, ".calendar")
+        .filter((element) => element.component === undefined);
     if (elems.length == 0) return;
 
     // TODO: implement prefetching, currently loads as a nasty waterfall of requests
@@ -657,7 +790,7 @@ async function setupCalendars(root = document) {
 }
 
 async function setupTodos(root = document) {
-    const elems = Array.from(root.getElementsByClassName("todo"));
+    const elems = queryElements(root, ".todo");
     if (elems.length == 0) return;
 
     const todo = await import ('./todo.js');
@@ -667,8 +800,20 @@ async function setupTodos(root = document) {
     }
 }
 
+function setupRelativeTimeInElement(element) {
+    updateRelativeTimeForElements(
+        queryElements(
+            element,
+            "[data-dynamic-relative-time]"
+        )
+    );
+}
+
 function setupTruncatedElementTitles(root = document) {
-    const elements = root.querySelectorAll(".text-truncate, .single-line-titles .title, .text-truncate-2-lines, .text-truncate-3-lines");
+    const elements = queryElements(
+        root,
+        ".text-truncate, .single-line-titles .title, .text-truncate-2-lines, .text-truncate-3-lines"
+    );
 
     if (elements.length == 0) {
         return;
@@ -681,131 +826,9 @@ function setupTruncatedElementTitles(root = document) {
     }
 }
 
-function setupRelativeTimeInElement(element) {
-    updateRelativeTimeForElements(
-        element.querySelectorAll(
-            "[data-dynamic-relative-time]"
-        )
-    );
-}
-
-function setupCollapsibleListsInElement(element) {
-    const collapsibleLists =
-        element.querySelectorAll(
-            ".list.collapsible-container"
-        );
-
-    for (let i = 0; i < collapsibleLists.length; i++) {
-        const list = collapsibleLists[i];
-
-        if (list.dataset.collapseAfter === undefined) {
-            continue;
-        }
-
-        const collapseAfter =
-            parseInt(list.dataset.collapseAfter);
-
-        if (
-            collapseAfter == -1 ||
-            list.children.length <= collapseAfter
-        ) {
-            continue;
-        }
-
-        attachExpandToggleButton(list);
-
-        for (
-            let c = collapseAfter;
-            c < list.children.length;
-            c++
-        ) {
-            const child = list.children[c];
-
-            child.classList.add(
-                "collapsible-item"
-            );
-
-            child.style.animationDelay =
-                ((c - collapseAfter) * 20)
-                    .toString() + "ms";
-        }
-    }
-}
-
-function setupTruncatedTitlesInElement(element) {
-    const elements = element.querySelectorAll(
-        ".text-truncate, " +
-        ".single-line-titles .title, " +
-        ".text-truncate-2-lines, " +
-        ".text-truncate-3-lines"
-    );
-
-    for (let i = 0; i < elements.length; i++) {
-        const item = elements[i];
-
-        if (item.getAttribute("title") === null) {
-            item.title = item.innerText
-                .trim()
-                .replace(/\s+/g, " ");
-        }
-    }
-}
-
-function setupRefreshedNativeWidget(widget) {
-    setupCarousels(widget);
-    setupLazyImages(widget);
-    setupRelativeTimeInElement(widget);
-    setupCollapsibleListsInElement(widget);
-    setupTruncatedTitlesInElement(widget);
-}
-
-async function refreshNativeWidget(widget) {
-    const widgetID = widget.dataset.widgetId;
-
-    if (widgetID === undefined) {
-        return null;
-    }
-
-    const response = await fetch(
-        `${pageData.baseURL}/api/widgets/` +
-        `${widgetID}/content/`
-    );
-
-    if (!response.ok) {
-        throw new Error(
-            `widget ${widgetID}: HTTP ` +
-            response.status
-        );
-    }
-
-    const html = await response.text();
-    const template =
-        document.createElement("template");
-
-    template.innerHTML = html.trim();
-
-    const replacement =
-        template.content.firstElementChild;
-
-    if (
-        replacement === null ||
-        replacement.dataset.widgetId !== widgetID
-    ) {
-        throw new Error(
-            `widget ${widgetID}: invalid fragment`
-        );
-    }
-
-    widget.replaceWith(replacement);
-    setupRefreshedNativeWidget(replacement);
-
-    return replacement;
-}
-
-
 async function initializeContent(root = document) {
     setupPopovers(root);
-    setupClocks(root)
+    setupClocks(root);
     await setupCalendars(root);
     await setupTodos(root);
     setupCarousels(root);
@@ -814,29 +837,44 @@ async function initializeContent(root = document) {
     setupCollapsibleGrids(root);
     setupGroups(root);
     setupMasonries(root);
+    setupRelativeTimeInElement(root);
     setupLazyImages(root);
-    updateRelativeTimeForElements(root.querySelectorAll("[data-dynamic-relative-time]"));
-    afterContentReady(() => setTimeout(() => setupTruncatedElementTitles(root), 50));
+
+    setTimeout(() => {
+        setupTruncatedElementTitles(root);
+    }, 50);
 }
 
 function cleanupContent(root) {
     cleanupPopovers(root);
     cleanupMasonries(root);
 
-    for (const carousel of root.getElementsByClassName("carousel-container")) {
-        window.removeEventListener("resize", carouselResizeListeners.get(carousel));
-        carouselResizeListeners.delete(carousel);
+    const clocks = queryElements(root, '.clock');
+    for (let i = 0; i < clocks.length; i++) {
+        const timer = clockTimers.get(clocks[i]);
+        if (timer !== undefined && timer !== null) {
+            clearTimeout(timer);
+        }
+        clockTimers.delete(clocks[i]);
     }
-    for (const clock of root.getElementsByClassName("clock")) {
-        clearTimeout(clockTimers.get(clock));
-        clockTimers.delete(clock);
+
+    const grids = queryElements(
+        root,
+        ".cards-grid.collapsible-container"
+    );
+    for (let i = 0; i < grids.length; i++) {
+        const observer = collapsibleGridObservers.get(grids[i]);
+        if (observer !== undefined) {
+            observer.disconnect();
+            collapsibleGridObservers.delete(grids[i]);
+        }
     }
-    for (const grid of root.querySelectorAll(".cards-grid.collapsible-container")) {
-        collapsibleGridObservers.get(grid)?.disconnect();
-        collapsibleGridObservers.delete(grid);
-    }
-    for (const calendar of root.getElementsByClassName("calendar")) {
-        calendar.component?.suspend?.();
+
+    const calendars = queryElements(root, '.calendar');
+    for (let i = 0; i < calendars.length; i++) {
+        if (typeof calendars[i].component?.suspend === "function") {
+            calendars[i].component.suspend();
+        }
     }
 }
 
@@ -880,15 +918,6 @@ function initThemePicker() {
     let themePreviewElems = document.getElementsByClassName("current-theme-preview");
     let isLoading = false;
 
-    function syncThemePreset() {
-        presetElems.forEach((e) => {
-            const isActive = e.dataset.key == pageData.theme;
-            e.classList.toggle("current", isActive);
-            e.setAttribute("aria-pressed", isActive ? "true" : "false");
-        });
-    }
-    syncThemePreset();
-
     presetElems.forEach((presetElement) => {
         const themeKey = presetElement.dataset.key;
 
@@ -908,20 +937,21 @@ function initThemePicker() {
             changeTheme(themeKey, function() {
                 isLoading = false;
                 pageData.theme = themeKey;
-                syncThemePreset();
+                presetElems.forEach((e) => { e.classList.remove("current"); });
 
                 Array.from(themePreviewElems).forEach((preview) => {
-                    const button = preview.querySelector(".theme-preset");
-                    const clone = presetElement.cloneNode(true);
+                    preview.querySelector(".theme-preset").replaceWith(
+                        presetElement.cloneNode(true)
+                    );
+                })
 
-                    clone.removeAttribute("aria-pressed");
-                    clone.setAttribute("aria-label", "Change theme");
-
-                    button.replaceWith(clone);
+                presetElems.forEach((e) => {
+                    if (e.dataset.key != themeKey) return;
+                    e.classList.add("current");
                 });
             });
         });
-    });
+    })
 }
 
 async function setupPage() {
@@ -934,7 +964,7 @@ async function setupPage() {
     pageContentElement.innerHTML = pageContent;
 
     try {
-        await initializeContent();
+        await initializeContent(document);
         setupDynamicRelativeTime();
         setupNativeWidgetRefresh({
             baseURL: pageData.baseURL,
@@ -944,13 +974,7 @@ async function setupPage() {
     } finally {
         pageElement.classList.add("content-ready");
         pageElement.setAttribute("aria-busy", "false");
-
-        contentReady = true;
-        for (let i = 0; i < contentReadyCallbacks.length; i++) {
-            contentReadyCallbacks[i]();
-        }
-
-        contentReadyCallbacks.length = 0;
+        markContentReady();
 
         setTimeout(() => {
             document.body.classList.add("page-columns-transitioned");
