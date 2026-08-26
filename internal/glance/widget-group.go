@@ -18,6 +18,10 @@ func (widget *groupWidget) initialize() error {
 	widget.withError(nil)
 	widget.HideHeader = true
 
+	if widget.RefreshInterval > 0 {
+		return errors.New("refresh is not supported on group widgets; set refresh on child widgets instead")
+	}
+
 	for i := range widget.Widgets {
 		widget.Widgets[i].setHideHeader(true)
 
