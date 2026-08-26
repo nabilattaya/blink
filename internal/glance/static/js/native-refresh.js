@@ -6,6 +6,7 @@ const retryDelays = [
 ];
 
 const defaultRequestTimeout = 30 * 1000;
+const defaultMaxConcurrentRefreshes = 3;
 
 class NativeRefreshHTTPError extends Error {
     constructor(widgetID, status) {
@@ -104,10 +105,11 @@ export function setupNativeWidgetRefresh({
     initializeContent,
     cleanupContent,
     requestTimeoutMs = defaultRequestTimeout,
+    maxConcurrentRefreshes = defaultMaxConcurrentRefreshes,
 }) {
     const states = new Map();
     const pending = [];
-    let refreshing = false;
+    let activeRefreshes = 0;
     let reloading = false;
 
     const schedule = (state, delay) => {
@@ -159,9 +161,11 @@ export function setupNativeWidgetRefresh({
             return;
         }
 
-        const widget = state.widget;
+        const widget = document.querySelector(
+            `[data-widget-id="${state.id}"]`
+        );
 
-        if (!widget.isConnected) {
+        if (widget === null) {
             states.delete(state.id);
             return;
         }
@@ -188,7 +192,6 @@ export function setupNativeWidgetRefresh({
 
             cleanupContent(widget);
             widget.replaceWith(replacement);
-            state.widget = replacement;
             await initializeContent(replacement);
 
             const interval = parseInt(
@@ -254,7 +257,7 @@ export function setupNativeWidgetRefresh({
         }
 
         while (
-            !refreshing &&
+            activeRefreshes < maxConcurrentRefreshes &&
             pending.length > 0
         ) {
             const state = pending.shift();
@@ -264,9 +267,9 @@ export function setupNativeWidgetRefresh({
                 continue;
             }
 
-            refreshing = true;
+            activeRefreshes++;
             runRefresh(state).finally(() => {
-                refreshing = false;
+                activeRefreshes--;
                 drain();
             });
         }
@@ -293,6 +296,7 @@ export function setupNativeWidgetRefresh({
             "[data-widget-id][data-widget-refresh]"
         );
 
+        let index = 0;
         for (const widget of widgets) {
             const id = widget.dataset.widgetId;
             const interval = parseInt(
@@ -310,7 +314,6 @@ export function setupNativeWidgetRefresh({
 
             const state = {
                 id,
-                widget,
                 interval,
                 timer: null,
                 running: false,
@@ -323,7 +326,20 @@ export function setupNativeWidgetRefresh({
 
             states.set(id, state);
 
-            schedule(state, interval);
+            const staggerWindow = Math.min(
+                2000,
+                Math.floor(interval * 0.05)
+            );
+            const stagger = staggerWindow === 0
+                ? 0
+                : Math.floor(
+                    (staggerWindow *
+                        (index % maxConcurrentRefreshes)) /
+                    maxConcurrentRefreshes
+                );
+
+            schedule(state, interval + stagger);
+            index++;
         }
     };
 

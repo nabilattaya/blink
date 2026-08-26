@@ -802,165 +802,6 @@ async function refreshNativeWidget(widget) {
     return replacement;
 }
 
-function setupNativeWidgetRefresh() {
-    const states = new Map();
-
-    const schedule = (state, delay) => {
-        clearTimeout(state.timer);
-
-        if (document.hidden) {
-            state.timer = null;
-            return;
-        }
-
-        state.timer = setTimeout(
-            () => refresh(state),
-            delay
-        );
-    };
-
-    const refresh = async (state) => {
-        if (state.running || document.hidden) {
-            return;
-        }
-
-        const widget = document.querySelector(
-            `[data-widget-id="${state.id}"]`
-        );
-
-        if (widget === null) {
-            states.delete(state.id);
-            return;
-        }
-
-        state.running = true;
-
-        let nextDelay = state.interval;
-
-        try {
-            const replacement =
-                await refreshNativeWidget(widget);
-
-            if (replacement !== null) {
-                const interval =
-                    parseInt(
-                        replacement.dataset.widgetRefresh
-                    );
-
-                if (
-                    Number.isFinite(interval) &&
-                    interval > 0
-                ) {
-                    state.interval = interval;
-                }
-            }
-
-            state.lastRefresh = Date.now();
-            state.failureCount = 0;
-            nextDelay = state.interval;
-        } catch (error) {
-            console.error(
-                "Failed to refresh native widget:",
-                error
-            );
-
-            const retryDelays = [
-                30 * 1000,
-                60 * 1000,
-                2 * 60 * 1000,
-                5 * 60 * 1000
-            ];
-
-            if (state.failureCount < retryDelays.length) {
-                nextDelay = Math.min(
-                    retryDelays[state.failureCount],
-                    state.interval
-                );
-            } else {
-                nextDelay = state.interval;
-            }
-
-            state.failureCount++;
-        } finally {
-            state.running = false;
-
-            if (states.has(state.id)) {
-                schedule(
-                    state,
-                    nextDelay
-                );
-            }
-        }
-    };
-
-    const discover = () => {
-        const widgets =
-            document.querySelectorAll(
-                "[data-widget-id]" +
-                "[data-widget-refresh]"
-            );
-
-        for (const widget of widgets) {
-            const id = widget.dataset.widgetId;
-            const interval =
-                parseInt(
-                    widget.dataset.widgetRefresh
-                );
-
-            if (
-                id === undefined ||
-                !Number.isFinite(interval) ||
-                interval <= 0 ||
-                states.has(id)
-            ) {
-                continue;
-            }
-
-            const state = {
-                id,
-                interval,
-                timer: null,
-                running: false,
-                lastRefresh: Date.now(),
-                failureCount: 0,
-            };
-
-            states.set(id, state);
-            schedule(state, interval);
-        }
-    };
-
-    discover();
-
-    document.addEventListener(
-        "visibilitychange",
-        () => {
-            const now = Date.now();
-
-            for (const state of states.values()) {
-                clearTimeout(state.timer);
-                state.timer = null;
-
-                if (document.hidden) {
-                    continue;
-                }
-
-                const elapsed =
-                    now - state.lastRefresh;
-
-                if (elapsed >= state.interval) {
-                    refresh(state);
-                } else {
-                    schedule(
-                        state,
-                        state.interval - elapsed
-                    );
-                }
-            }
-        }
-    );
-}
-
 
 async function initializeContent(root = document) {
     setupPopovers(root);
@@ -1095,7 +936,11 @@ async function setupPage() {
     try {
         await initializeContent();
         setupDynamicRelativeTime();
-        setupNativeWidgetRefresh();
+        setupNativeWidgetRefresh({
+            baseURL: pageData.baseURL,
+            initializeContent,
+            cleanupContent,
+        });
     } finally {
         pageElement.classList.add("content-ready");
         pageElement.setAttribute("aria-busy", "false");
