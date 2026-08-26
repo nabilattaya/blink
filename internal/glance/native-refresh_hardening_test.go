@@ -57,16 +57,16 @@ func (widget *nativeRefreshContextWidget) Render() template.HTML {
 }
 
 func TestWidgetContentEndpointUsesRequestContext(t *testing.T) {
-	widget := &nativeRefreshContextWidget{}
-	widget.Type = "test"
-	widget.ID = 42
-	widget.cacheType = cacheTypeDuration
-	widget.cacheDuration = time.Hour
+	testWidget := &nativeRefreshContextWidget{}
+	testWidget.Type = "test"
+	testWidget.ID = 42
+	testWidget.cacheType = cacheTypeDuration
+	testWidget.cacheDuration = time.Hour
 
-	page := &page{}
+	testPage := &page{}
 	app := &application{
-		widgetByID: map[uint64]widget{42: widget},
-		pageByWidgetID: map[uint64]*page{42: page},
+		widgetByID: map[uint64]widget{42: testWidget},
+		pageByWidgetID: map[uint64]*page{42: testPage},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -86,7 +86,7 @@ func TestWidgetContentEndpointUsesRequestContext(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
 
-	if widget.contextErr != context.Canceled {
-		t.Fatalf("widget update context error = %v, want context.Canceled", widget.contextErr)
+	if testWidget.contextErr != context.Canceled {
+		t.Fatalf("widget update context error = %v, want context.Canceled", testWidget.contextErr)
 	}
 }
