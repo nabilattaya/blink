@@ -159,11 +159,9 @@ export function setupNativeWidgetRefresh({
             return;
         }
 
-        const widget = document.querySelector(
-            `[data-widget-id="${state.id}"]`
-        );
+        const widget = state.widget;
 
-        if (widget === null) {
+        if (!widget.isConnected) {
             states.delete(state.id);
             return;
         }
@@ -190,6 +188,7 @@ export function setupNativeWidgetRefresh({
 
             cleanupContent(widget);
             widget.replaceWith(replacement);
+            state.widget = replacement;
             await initializeContent(replacement);
 
             const interval = parseInt(
@@ -311,6 +310,7 @@ export function setupNativeWidgetRefresh({
 
             const state = {
                 id,
+                widget,
                 interval,
                 timer: null,
                 running: false,

@@ -68,19 +68,18 @@ test('refresh fetch validates fragments and times out stalled requests', async (
         const originalFetch = window.fetch;
 
         try {
-            window.fetch = async () => new Response(
-                '<div data-widget-id="999"></div>',
-                { status: 200 }
-            );
-
-            let invalidFragmentError;
-            try {
-                await refresh.fetchNativeWidgetReplacement(widget, {
-                    baseURL: '',
-                    timeoutMs: 250,
-                });
-            } catch (error) {
-                invalidFragmentError = error.name;
+            const invalidFragmentErrors = [];
+            for (const html of ['', '<div>No widget ID</div>', '<div data-widget-id="999"></div>']) {
+                window.fetch = async () => new Response(html, { status: 200 });
+                try {
+                    await refresh.fetchNativeWidgetReplacement(widget, {
+                        baseURL: '',
+                        timeoutMs: 250,
+                    });
+                    invalidFragmentErrors.push(null);
+                } catch (error) {
+                    invalidFragmentErrors.push(error.name);
+                }
             }
 
             window.fetch = (_url, options = {}) => new Promise((_, reject) => {
@@ -99,13 +98,13 @@ test('refresh fetch validates fragments and times out stalled requests', async (
                 timeoutError = error.name;
             }
 
-            return { invalidFragmentError, timeoutError };
+            return { invalidFragmentErrors, timeoutError };
         } finally {
             window.fetch = originalFetch;
         }
     }, nativeRefreshURL);
 
-    expect(result.invalidFragmentError).toBe('NativeRefreshFragmentError');
+    expect(result.invalidFragmentErrors).toEqual(Array(3).fill('NativeRefreshFragmentError'));
     expect(result.timeoutError).toBe('TimeoutError');
 });
 
@@ -363,4 +362,95 @@ test('pending popovers cannot open after their target is removed', async ({ page
     }, popoverURL);
     await page.waitForTimeout(200);
     await expect(page.locator('.popover-container')).toBeHidden();
+});
+
+test('the generic widget subpath route retains upstream 501 behavior', async ({ page, request }) => {
+    await page.goto('/');
+    await expect(page.locator('[data-widget-refresh]').first()).toBeVisible();
+    const id = await page.locator('[data-widget-refresh]').first().getAttribute('data-widget-id');
+    const generic = await request.get(`/api/widgets/${id}/unrelated/subpath`);
+    expect(generic.status()).toBe(501);
+    expect(await generic.text()).toBe('');
+    const native = await request.get(`/api/widgets/${id}/content/`);
+    expect(native.status()).toBe(200);
+    expect(await native.text()).toContain(`data-widget-id="${id}"`);
+});
+
+test('hiding a page cancels its in-flight request and visibility catches up', async ({ page }) => {
+    await page.addInitScript(() => {
+        const fetch = window.fetch;
+        window.__blinkRefreshRequests = 0;
+        window.__blinkRefreshAborted = false;
+        window.fetch = (url, options) => {
+            if (/\/api\/widgets\/\d+\/content\/$/.test(url)) {
+                window.__blinkRefreshRequests++;
+                if (window.__blinkRefreshRequests === 1) {
+                    return new Promise((_, reject) => {
+                        options.signal.addEventListener('abort', () => {
+                            window.__blinkRefreshAborted = true;
+                            reject(new DOMException('Aborted', 'AbortError'));
+                        }, { once: true });
+                    });
+                }
+            }
+            return fetch(url, options);
+        };
+    });
+    await page.goto('/');
+    await expect.poll(() => page.evaluate(() => window.__blinkRefreshRequests)).toBe(1);
+    await page.evaluate(() => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+        document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await expect.poll(() => page.evaluate(() => window.__blinkRefreshAborted)).toBe(true);
+    await page.waitForTimeout(1_100);
+    expect(await page.evaluate(() => window.__blinkRefreshRequests)).toBe(1);
+    await page.evaluate(() => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+        document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await expect.poll(() => page.evaluate(() => window.__blinkRefreshRequests)).toBeGreaterThan(1);
+    await waitForAllWidgetReplacements(page);
+});
+
+test('transient failures preserve the widget and follow the retry schedule', async ({ page }) => {
+    await page.route('**/api/pages/*/content/', async (route) => {
+        const response = await route.fetch();
+        const body = (await response.text()).replace(/ data-widget-refresh="\d+"/g, '');
+        await route.fulfill({ response, body });
+    });
+    await page.goto('/');
+    await expect(page.locator('.search-input')).toBeVisible();
+    const nativeRefreshURL = await moduleURL(page, 'native-refresh.js');
+    await page.clock.install();
+    await page.clock.pauseAt(new Date(Date.now() + 1000));
+    await page.evaluate(async (url) => {
+        const refresh = await import(url);
+        const widget = document.createElement('div');
+        widget.id = 'retry-widget';
+        widget.dataset.widgetId = '42';
+        widget.dataset.widgetRefresh = '600000';
+        widget.textContent = 'Original';
+        document.body.append(widget);
+        window.__blinkRetryRequests = 0;
+        window.fetch = async () => {
+            window.__blinkRetryRequests++;
+            return window.__blinkRetryRequests <= 5
+                ? new Response('Unavailable', { status: 503 })
+                : new Response('<div id="retry-widget" data-widget-id="42" data-widget-refresh="600000">Recovered</div>');
+        };
+        refresh.setupNativeWidgetRefresh({
+            baseURL: '',
+            initializeContent: () => {},
+            cleanupContent: () => {},
+        });
+    }, nativeRefreshURL);
+    for (const [index, delay] of [600000, 30000, 60000, 120000, 300000, 600000].entries()) {
+        await page.clock.runFor(delay - 1);
+        expect(await page.evaluate(() => window.__blinkRetryRequests)).toBe(index);
+        await expect(page.locator('#retry-widget')).toHaveText('Original');
+        await page.clock.runFor(1);
+        await expect.poll(() => page.evaluate(() => window.__blinkRetryRequests)).toBe(index + 1);
+    }
+    await expect(page.locator('#retry-widget')).toHaveText('Recovered');
 });

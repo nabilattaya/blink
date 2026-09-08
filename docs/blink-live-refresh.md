@@ -63,9 +63,9 @@ Blink also:
 - times out stalled fragment requests and retries transient failures;
 - uses retry delays of 30 seconds, 1 minute, 2 minutes, and 5 minutes before returning to the configured interval.
 
-## Configuration hot reload
+## Configuration hot reload and process restarts
 
-Glance recreates its application when a valid watched configuration changes. Runtime widget IDs can therefore change while an older browser tab still contains the previous IDs.
+Glance recreates its application when a valid watched configuration changes. Runtime widget IDs can therefore change while an older browser tab still contains the previous IDs. Blink seeds Glance's numeric, atomically incremented counter from the process startup time in nanoseconds to avoid reusing those IDs after a full restart. The browser keeps IDs as strings so large numeric IDs retain their precision.
 
 If Blink receives a page-state response such as `404` for a widget that was already active, it reloads the page instead of retrying that stale widget ID forever. Authentication/session responses (`401`/`403`) are treated the same way so the browser can re-enter the normal page/authentication flow.
 
