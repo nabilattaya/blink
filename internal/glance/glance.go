@@ -232,22 +232,6 @@ func newApplication(c *config) (*application, error) {
 	return app, nil
 }
 
-func (a *application) registerWidget(page *page, widget widget) {
-	a.widgetByID[widget.GetID()] = widget
-	a.pageByWidgetID[widget.GetID()] = page
-
-	switch container := widget.(type) {
-	case *groupWidget:
-		for i := range container.Widgets {
-			a.registerWidget(page, container.Widgets[i])
-		}
-	case *splitColumnWidget:
-		for i := range container.Widgets {
-			a.registerWidget(page, container.Widgets[i])
-		}
-	}
-}
-
 func (p *page) updateOutdatedWidgets() {
 	now := time.Now()
 
@@ -339,11 +323,9 @@ func (a *application) handlePageRequest(w http.ResponseWriter, r *http.Request) 
 	a.populateTemplateRequestData(&data.Request, r)
 
 	var responseBytes bytes.Buffer
-
 	page.mu.Lock()
 	err := pageTemplate.Execute(&responseBytes, data)
 	page.mu.Unlock()
-
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
@@ -433,27 +415,26 @@ func (a *application) handleNotFound(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *application) handleWidgetRequest(w http.ResponseWriter, r *http.Request) {
-	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
-		return
-	}
+	// TODO: this requires a rework of the widget update logic so that rather
+	// than locking the entire page we lock individual widgets
+	w.WriteHeader(http.StatusNotImplemented)
 
-	widgetID, err := strconv.ParseUint(
-		r.PathValue("widget"),
-		10,
-		64,
-	)
-	if err != nil {
-		a.handleNotFound(w, r)
-		return
-	}
+	// widgetValue := r.PathValue("widget")
 
-	widget, exists := a.widgetByID[widgetID]
-	if !exists {
-		a.handleNotFound(w, r)
-		return
-	}
+	// widgetID, err := strconv.ParseUint(widgetValue, 10, 64)
+	// if err != nil {
+	// 	a.handleNotFound(w, r)
+	// 	return
+	// }
 
-	widget.handleRequest(w, r)
+	// widget, exists := a.widgetByID[widgetID]
+
+	// if !exists {
+	// 	a.handleNotFound(w, r)
+	// 	return
+	// }
+
+	// widget.handleRequest(w, r)
 }
 
 func (a *application) StaticAssetPath(asset string) string {
@@ -477,10 +458,7 @@ func (a *application) server() (func() error, func() error) {
 		mux.HandleFunc("POST /api/set-theme/{key}", a.handleThemeChangeRequest)
 	}
 
-	mux.HandleFunc(
-		"/api/widgets/{widget}/content/{$}",
-		a.handleNativeWidgetContentRequest,
-	)
+	mux.HandleFunc("/api/widgets/{widget}/content/{$}", a.handleNativeWidgetContentRequest)
 	mux.HandleFunc("/api/widgets/{widget}/{path...}", a.handleWidgetRequest)
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

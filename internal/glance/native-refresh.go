@@ -6,6 +6,27 @@ import (
 	"time"
 )
 
+func init() {
+	// Avoid reusing stale browser widget IDs after a process restart.
+	widgetIDCounter.Store(uint64(time.Now().UnixNano()))
+}
+
+func (a *application) registerWidget(page *page, widget widget) {
+	a.widgetByID[widget.GetID()] = widget
+	a.pageByWidgetID[widget.GetID()] = page
+
+	switch container := widget.(type) {
+	case *groupWidget:
+		for i := range container.Widgets {
+			a.registerWidget(page, container.Widgets[i])
+		}
+	case *splitColumnWidget:
+		for i := range container.Widgets {
+			a.registerWidget(page, container.Widgets[i])
+		}
+	}
+}
+
 func (a *application) handleNativeWidgetContentRequest(
 	w http.ResponseWriter,
 	r *http.Request,
