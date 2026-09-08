@@ -54,7 +54,7 @@ jobs:
           package-manager-cache: false
 
       - name: Install browser test dependencies
-        run: npm install
+        run: npm ci
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
