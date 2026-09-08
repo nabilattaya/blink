@@ -217,7 +217,12 @@ test('configuration hot reload recovers stale widget ids by reloading the page',
         const replacementWidgetID = await page.locator('[data-widget-refresh]').first().getAttribute('data-widget-id');
         expect(replacementWidgetID).not.toBe(originalWidgetID);
     } finally {
+        const id = await page.locator('[data-widget-refresh]').first().getAttribute('data-widget-id');
         await writeFile(configPath, originalConfig, 'utf8');
+        await expect.poll(async () => {
+            const response = await page.request.get(`/api/widgets/${id}/content/`);
+            return response.status();
+        }).toBe(404);
     }
 });
 
