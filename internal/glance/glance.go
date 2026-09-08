@@ -461,7 +461,7 @@ func (a *application) StaticAssetPath(asset string) string {
 }
 
 func (a *application) VersionedAssetPath(asset string) string {
-	return a.Config.Server.BaseURL + asset +
+	return a.Config.Server.BaseURL + "/" + asset +
 		"?v=" + strconv.FormatInt(a.CreatedAt.Unix(), 10)
 }
 
@@ -525,8 +525,10 @@ func (a *application) server() (func() error, func() error) {
 	}
 
 	server := http.Server{
-		Addr:    fmt.Sprintf("%s:%d", a.Config.Server.Host, a.Config.Server.Port),
-		Handler: mux,
+		Addr:              fmt.Sprintf("%s:%d", a.Config.Server.Host, a.Config.Server.Port),
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
 	}
 
 	start := func() error {
