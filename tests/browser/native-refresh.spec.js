@@ -221,3 +221,146 @@ test('configuration hot reload recovers stale widget ids by reloading the page',
         await writeFile(configPath, originalConfig, 'utf8');
     }
 });
+
+test('only opted-in leaves refresh and group tabs survive child replacement', async ({ page }) => {
+    const requested = new Set();
+    page.on('request', (request) => {
+        const match = new URL(request.url()).pathname.match(/\/api\/widgets\/(\d+)\/content\/$/);
+        if (match) requested.add(match[1]);
+    });
+    await page.goto('/');
+    await expect(page.locator('#not-refreshed')).toBeVisible();
+    const expected = await page.locator('[data-widget-refresh]').evaluateAll(
+        (widgets) => widgets.map((widget) => widget.dataset.widgetId)
+    );
+    await page.locator('.widget-group-title').nth(1).click();
+    await page.evaluate(() => {
+        window.__blinkNoReload = true;
+        window.__blinkStaticWidget = document.getElementById('not-refreshed');
+    });
+    await waitForAllWidgetReplacements(page);
+    await expect.poll(() => requested.size).toBe(expected.length);
+    expect([...requested].sort()).toEqual(expected.sort());
+    expect(await page.evaluate(() => window.__blinkNoReload && window.__blinkStaticWidget.isConnected)).toBe(true);
+    await expect(page.locator('.widget-group-title').nth(1)).toHaveAttribute('aria-selected', 'true');
+    await page.locator('.widget-group-title').first().click();
+    await expect(page.locator('.widget-type-group .clock')).toBeVisible();
+});
+
+test('fragment replacement releases clock and calendar timers', async ({ page }) => {
+    await page.addInitScript(() => {
+        const set = window.setTimeout;
+        const clear = window.clearTimeout;
+        window.__blinkLongTimers = new Set();
+        window.setTimeout = (callback, delay, ...args) => {
+            const id = set(() => {
+                window.__blinkLongTimers.delete(id);
+                callback(...args);
+            }, delay);
+            if (delay > 10_000) window.__blinkLongTimers.add(id);
+            return id;
+        };
+        window.clearTimeout = (id) => {
+            window.__blinkLongTimers.delete(id);
+            clear(id);
+        };
+    });
+    await page.goto('/');
+    await expect(page.getByTitle('Previous month')).toBeVisible();
+    await page.evaluate(() => {
+        window.__blinkOriginalTimers = [...window.__blinkLongTimers];
+    });
+    expect(await page.evaluate(() => window.__blinkOriginalTimers.length)).toBeGreaterThan(0);
+    await waitForAllWidgetReplacements(page);
+    expect(await page.evaluate(() => window.__blinkOriginalTimers.every(
+        (id) => !window.__blinkLongTimers.has(id)
+    ))).toBe(true);
+    await expect(page.locator('.clock [data-time]').first()).not.toHaveText('');
+    await expect(page.getByTitle('Previous month')).toBeVisible();
+});
+
+test('fragment layouts initialize locally and release observers and global listeners', async ({ page }) => {
+    await page.addInitScript(() => {
+        const OriginalObserver = window.ResizeObserver;
+        window.__blinkObserved = new Map();
+        window.ResizeObserver = class extends OriginalObserver {
+            observe(target, options) {
+                if (!window.__blinkObserved.has(this)) window.__blinkObserved.set(this, new Set());
+                window.__blinkObserved.get(this).add(target);
+                super.observe(target, options);
+            }
+            unobserve(target) {
+                window.__blinkObserved.get(this)?.delete(target);
+                super.unobserve(target);
+            }
+            disconnect() {
+                window.__blinkObserved.delete(this);
+                super.disconnect();
+            }
+        };
+        const add = window.addEventListener;
+        const remove = window.removeEventListener;
+        window.__blinkResizeListeners = new Set();
+        window.addEventListener = (type, listener, options) => {
+            if (type === 'resize') window.__blinkResizeListeners.add(listener);
+            add.call(window, type, listener, options);
+        };
+        window.removeEventListener = (type, listener, options) => {
+            if (type === 'resize') window.__blinkResizeListeners.delete(listener);
+            remove.call(window, type, listener, options);
+        };
+    });
+    await page.goto('/lifecycle');
+    await expect(page.locator('.masonry-column')).toHaveCount(2);
+    const initialListeners = await page.evaluate(() => window.__blinkResizeListeners.size);
+    for (let i = 0; i < 3; i++) {
+        await waitForAllWidgetReplacements(page);
+        await expect(page.locator('.masonry-column')).toHaveCount(2);
+        await expect(page.locator('.expand-toggle-button')).toHaveCount(2);
+        await expect(page.locator('.list .collapsible-item')).toHaveCount(2);
+        await expect(page.locator('.cards-grid .collapsible-item')).toHaveCount(1);
+        await expect(page.locator('.carousel-container')).toHaveClass(/show-right-cutoff/);
+        await expect(page.locator('img[loading=lazy]')).toHaveClass(/finished-transition/);
+        await expect(page.locator('.text-truncate')).toHaveAttribute('title', 'Refreshed title');
+        await expect(page.locator('[data-dynamic-relative-time]')).not.toHaveText('');
+        expect(await page.evaluate(() => window.__blinkResizeListeners.size)).toBe(initialListeners);
+        expect(await page.evaluate(() => [...window.__blinkObserved.values()].every(
+            (targets) => [...targets].every((target) => target.isConnected)
+        ))).toBe(true);
+    }
+});
+
+test('masonry setup is idempotent and cleanup disconnects removed content', async ({ page }) => {
+    await page.goto('/lifecycle');
+    await expect(page.locator('.masonry-column')).toHaveCount(2);
+    const masonryURL = await moduleURL(page, 'masonry.js');
+    const result = await page.evaluate(async (url) => {
+        const masonry = await import(url);
+        const root = document.querySelector('[data-widget-refresh]');
+        masonry.setupMasonries(root);
+        masonry.setupMasonries(root);
+        const columns = root.querySelectorAll('.masonry-column').length;
+        masonry.cleanupMasonries(root);
+        root.remove();
+        return columns;
+    }, masonryURL);
+    expect(result).toBe(2);
+});
+
+test('pending popovers cannot open after their target is removed', async ({ page }) => {
+    await page.goto('/');
+    const popoverURL = await moduleURL(page, 'popover.js');
+    await page.evaluate(async (url) => {
+        const popovers = await import(url);
+        const root = document.createElement('div');
+        root.innerHTML = '<button data-popover-type="text" data-popover-text="Removed target" data-popover-show-delay="100">Hover</button>';
+        document.body.append(root);
+        popovers.setupPopovers(root);
+        popovers.setupPopovers(root);
+        root.firstElementChild.dispatchEvent(new MouseEvent('mouseenter'));
+        popovers.cleanupPopovers(root);
+        root.remove();
+    }, popoverURL);
+    await page.waitForTimeout(200);
+    await expect(page.locator('.popover-container')).toBeHidden();
+});

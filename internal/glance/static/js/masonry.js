@@ -1,9 +1,10 @@
+
 import { clamp } from "./utils.js";
 
 const observers = new WeakMap();
 
 export function cleanupMasonries(root) {
-    const masonryContainers = root.querySelectorAll(".masonry");
+    const masonryContainers = root.getElementsByClassName("masonry");
 
     for (let i = 0; i < masonryContainers.length; i++) {
         const container = masonryContainers[i];
@@ -19,7 +20,7 @@ export function cleanupMasonries(root) {
 }
 
 export function setupMasonries(root = document) {
-    const masonryContainers = root.querySelectorAll(".masonry");
+    const masonryContainers = root.getElementsByClassName("masonry");
 
     for (let i = 0; i < masonryContainers.length; i++) {
         const container = masonryContainers[i];
@@ -38,11 +39,6 @@ export function setupMasonries(root = document) {
 
         const render = function() {
             if (!container.isConnected) {
-                const observer = observers.get(container);
-                if (observer !== undefined) {
-                    observer.disconnect();
-                    observers.delete(container);
-                }
                 return;
             }
 
