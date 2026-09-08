@@ -6,7 +6,6 @@ const retryDelays = [
 ];
 
 const defaultRequestTimeout = 30 * 1000;
-const defaultMaxConcurrentRefreshes = 3;
 
 class NativeRefreshHTTPError extends Error {
     constructor(widgetID, status) {
@@ -105,11 +104,10 @@ export function setupNativeWidgetRefresh({
     initializeContent,
     cleanupContent,
     requestTimeoutMs = defaultRequestTimeout,
-    maxConcurrentRefreshes = defaultMaxConcurrentRefreshes,
 }) {
     const states = new Map();
     const pending = [];
-    let activeRefreshes = 0;
+    let refreshing = false;
     let reloading = false;
 
     const schedule = (state, delay) => {
@@ -257,7 +255,7 @@ export function setupNativeWidgetRefresh({
         }
 
         while (
-            activeRefreshes < maxConcurrentRefreshes &&
+            !refreshing &&
             pending.length > 0
         ) {
             const state = pending.shift();
@@ -267,9 +265,9 @@ export function setupNativeWidgetRefresh({
                 continue;
             }
 
-            activeRefreshes++;
+            refreshing = true;
             runRefresh(state).finally(() => {
-                activeRefreshes--;
+                refreshing = false;
                 drain();
             });
         }
@@ -296,7 +294,6 @@ export function setupNativeWidgetRefresh({
             "[data-widget-id][data-widget-refresh]"
         );
 
-        let index = 0;
         for (const widget of widgets) {
             const id = widget.dataset.widgetId;
             const interval = parseInt(
@@ -326,20 +323,7 @@ export function setupNativeWidgetRefresh({
 
             states.set(id, state);
 
-            const staggerWindow = Math.min(
-                2000,
-                Math.floor(interval * 0.05)
-            );
-            const stagger = staggerWindow === 0
-                ? 0
-                : Math.floor(
-                    (staggerWindow *
-                        (index % maxConcurrentRefreshes)) /
-                    maxConcurrentRefreshes
-                );
-
-            schedule(state, interval + stagger);
-            index++;
+            schedule(state, interval);
         }
     };
 
