@@ -1,5 +1,6 @@
-import { setupPopovers } from './popover.js';
-import { setupMasonries } from './masonry.js';
+import { cleanupPopovers, setupPopovers } from './popover.js';
+import { cleanupMasonries, setupMasonries } from './masonry.js';
+import { setupNativeWidgetRefresh } from './native-refresh.js';
 import { throttledDebounce, isElementVisible, openURLInNewTab } from './utils.js';
 import { elem, find, findAll } from './templating.js';
 
@@ -12,8 +13,10 @@ async function fetchPageContent(pageData) {
     return content;
 }
 
-function setupCarousels() {
-    const carouselElements = document.getElementsByClassName("carousel-container");
+const carouselResizeListeners = new WeakMap();
+
+function setupCarousels(root = document) {
+    const carouselElements = root.getElementsByClassName("carousel-container");
 
     if (carouselElements.length == 0) {
         return;
@@ -42,6 +45,7 @@ function setupCarousels() {
 
         itemsContainer.addEventListener("scroll", determineSideCutoffsRateLimited);
         window.addEventListener("resize", determineSideCutoffsRateLimited);
+        carouselResizeListeners.set(carousel, determineSideCutoffsRateLimited);
 
         afterContentReady(determineSideCutoffs);
     }
@@ -95,11 +99,25 @@ function updateRelativeTimeForElements(elements)
     }
 }
 
-function setupSearchBoxes() {
-    const searchWidgets = document.getElementsByClassName("search");
+function setupSearchBoxes(root = document) {
+    const searchWidgets = root.getElementsByClassName("search");
 
     if (searchWidgets.length == 0) {
         return;
+    }
+
+    if (root === document) {
+        document.addEventListener("keydown", (event) => {
+            if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+            if (event.code != "KeyS") return;
+
+            const inputs = Array.from(document.querySelectorAll(".search .search-input"));
+            const inputElement = inputs.find(isElementVisible) || inputs[0];
+            if (inputElement === undefined) return;
+
+            inputElement.focus();
+            event.preventDefault();
+        });
     }
 
     for (let i = 0; i < searchWidgets.length; i++) {
@@ -184,22 +202,8 @@ function setupSearchBoxes() {
             changeCurrentBang(null);
         };
 
-        inputElement.addEventListener("focus", () => {
-            document.addEventListener("keydown", handleKeyDown);
-            document.addEventListener("input", handleInput);
-        });
-        inputElement.addEventListener("blur", () => {
-            document.removeEventListener("keydown", handleKeyDown);
-            document.removeEventListener("input", handleInput);
-        });
-
-        document.addEventListener("keydown", (event) => {
-            if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
-            if (event.code != "KeyS") return;
-
-            inputElement.focus();
-            event.preventDefault();
-        });
+        inputElement.addEventListener("keydown", handleKeyDown);
+        inputElement.addEventListener("input", handleInput);
 
         kbdElement.addEventListener("mousedown", () => {
             requestAnimationFrame(() => inputElement.focus());
@@ -208,14 +212,13 @@ function setupSearchBoxes() {
 }
 
 function setupDynamicRelativeTime() {
-    const elements = document.querySelectorAll("[data-dynamic-relative-time]");
     const updateInterval = 60 * 1000;
     let lastUpdateTime = Date.now();
 
-    updateRelativeTimeForElements(elements);
+    updateRelativeTimeForElements(document.querySelectorAll("[data-dynamic-relative-time]"));
 
     const updateElementsAndTimestamp = () => {
-        updateRelativeTimeForElements(elements);
+        updateRelativeTimeForElements(document.querySelectorAll("[data-dynamic-relative-time]"));
         lastUpdateTime = Date.now();
     };
 
@@ -249,8 +252,8 @@ function setupDynamicRelativeTime() {
     });
 }
 
-function setupGroups() {
-    const groups = document.getElementsByClassName("widget-type-group");
+function setupGroups(root = document) {
+    const groups = root.getElementsByClassName("widget-type-group");
 
     if (groups.length == 0) {
         return;
@@ -309,8 +312,8 @@ function setupGroups() {
     }
 }
 
-function setupLazyImages() {
-    const images = document.querySelectorAll("img[loading=lazy]");
+function setupLazyImages(root = document) {
+    const images = root.querySelectorAll("img[loading=lazy]");
 
     if (images.length == 0) {
         return;
@@ -384,8 +387,8 @@ function attachExpandToggleButton(collapsibleContainer) {
 };
 
 
-function setupCollapsibleLists() {
-    const collapsibleLists = document.querySelectorAll(".list.collapsible-container");
+function setupCollapsibleLists(root = document) {
+    const collapsibleLists = root.querySelectorAll(".list.collapsible-container");
 
     if (collapsibleLists.length == 0) {
         return;
@@ -418,8 +421,10 @@ function setupCollapsibleLists() {
     }
 }
 
-function setupCollapsibleGrids() {
-    const collapsibleGridElements = document.querySelectorAll(".cards-grid.collapsible-container");
+const collapsibleGridObservers = new WeakMap();
+
+function setupCollapsibleGrids(root = document) {
+    const collapsibleGridElements = root.querySelectorAll(".cards-grid.collapsible-container");
 
     if (collapsibleGridElements.length == 0) {
         return;
@@ -489,13 +494,20 @@ function setupCollapsibleGrids() {
             resolveCollapsibleItems();
         });
 
+        collapsibleGridObservers.set(gridElement, observer);
         afterContentReady(() => observer.observe(gridElement));
     }
 }
 
 const contentReadyCallbacks = [];
+let contentReady = false;
 
 function afterContentReady(callback) {
+    if (contentReady) {
+        callback();
+        return;
+    }
+
     contentReadyCallbacks.push(callback);
 }
 
@@ -571,17 +583,18 @@ function zoneDiffText(diffInMinutes) {
     return { text: `${sign}${hours}h~`, title: `${hours} hour${hourSuffix} and ${minutes} minutes ${signText}` };
 }
 
-function setupClocks() {
-    const clocks = document.getElementsByClassName('clock');
+const clockTimers = new WeakMap();
+
+function setupClocks(root = document) {
+    const clocks = root.getElementsByClassName('clock');
 
     if (clocks.length == 0) {
         return;
     }
 
-    const updateCallbacks = [];
-
     for (var i = 0; i < clocks.length; i++) {
         const clock = clocks[i];
+        const updateCallbacks = [];
         const hourFormat = clock.dataset.hourFormat;
         const localTimeContainer = clock.querySelector('[data-local-time]');
         const localDateElement = localTimeContainer.querySelector('[data-date]');
@@ -618,22 +631,22 @@ function setupClocks() {
                 diffElement.title = title;
             });
         }
+
+        const updateClocks = () => {
+            const now = new Date();
+
+            for (var i = 0; i < updateCallbacks.length; i++)
+                updateCallbacks[i](now);
+
+            clockTimers.set(clock, setTimeout(updateClocks, (60 - now.getSeconds()) * 1000));
+        };
+
+        updateClocks();
     }
-
-    const updateClocks = () => {
-        const now = new Date();
-
-        for (var i = 0; i < updateCallbacks.length; i++)
-            updateCallbacks[i](now);
-
-        setTimeout(updateClocks, (60 - now.getSeconds()) * 1000);
-    };
-
-    updateClocks();
 }
 
-async function setupCalendars() {
-    const elems = document.getElementsByClassName("calendar");
+async function setupCalendars(root = document) {
+    const elems = Array.from(root.getElementsByClassName("calendar"));
     if (elems.length == 0) return;
 
     // TODO: implement prefetching, currently loads as a nasty waterfall of requests
@@ -643,8 +656,8 @@ async function setupCalendars() {
         calendar.default(elems[i]);
 }
 
-async function setupTodos() {
-    const elems = Array.from(document.getElementsByClassName("todo"));
+async function setupTodos(root = document) {
+    const elems = Array.from(root.getElementsByClassName("todo"));
     if (elems.length == 0) return;
 
     const todo = await import ('./todo.js');
@@ -654,8 +667,8 @@ async function setupTodos() {
     }
 }
 
-function setupTruncatedElementTitles() {
-    const elements = document.querySelectorAll(".text-truncate, .single-line-titles .title, .text-truncate-2-lines, .text-truncate-3-lines");
+function setupTruncatedElementTitles(root = document) {
+    const elements = root.querySelectorAll(".text-truncate, .single-line-titles .title, .text-truncate-2-lines, .text-truncate-3-lines");
 
     if (elements.length == 0) {
         return;
@@ -665,6 +678,43 @@ function setupTruncatedElementTitles() {
         const element = elements[i];
         if (element.getAttribute("title") === null)
             element.title = element.innerText.trim().replace(/\s+/g, " ");
+    }
+}
+
+async function initializeContent(root = document) {
+    setupPopovers(root);
+    setupClocks(root)
+    await setupCalendars(root);
+    await setupTodos(root);
+    setupCarousels(root);
+    setupSearchBoxes(root);
+    setupCollapsibleLists(root);
+    setupCollapsibleGrids(root);
+    setupGroups(root);
+    setupMasonries(root);
+    setupLazyImages(root);
+    updateRelativeTimeForElements(root.querySelectorAll("[data-dynamic-relative-time]"));
+    afterContentReady(() => setTimeout(() => setupTruncatedElementTitles(root), 50));
+}
+
+function cleanupContent(root) {
+    cleanupPopovers(root);
+    cleanupMasonries(root);
+
+    for (const carousel of root.getElementsByClassName("carousel-container")) {
+        window.removeEventListener("resize", carouselResizeListeners.get(carousel));
+        carouselResizeListeners.delete(carousel);
+    }
+    for (const clock of root.getElementsByClassName("clock")) {
+        clearTimeout(clockTimers.get(clock));
+        clockTimers.delete(clock);
+    }
+    for (const grid of root.querySelectorAll(".cards-grid.collapsible-container")) {
+        collapsibleGridObservers.get(grid)?.disconnect();
+        collapsibleGridObservers.delete(grid);
+    }
+    for (const calendar of root.getElementsByClassName("calendar")) {
+        calendar.component?.suspend?.();
     }
 }
 
@@ -754,29 +804,19 @@ async function setupPage() {
     pageContentElement.innerHTML = pageContent;
 
     try {
-        setupPopovers();
-        setupClocks()
-        await setupCalendars();
-        await setupTodos();
-        setupCarousels();
-        setupSearchBoxes();
-        setupCollapsibleLists();
-        setupCollapsibleGrids();
-        setupGroups();
-        setupMasonries();
+        await initializeContent();
         setupDynamicRelativeTime();
-        setupLazyImages();
+        setupNativeWidgetRefresh({ baseURL: pageData.baseURL, initializeContent, cleanupContent });
     } finally {
         pageElement.classList.add("content-ready");
         pageElement.setAttribute("aria-busy", "false");
 
+        contentReady = true;
         for (let i = 0; i < contentReadyCallbacks.length; i++) {
             contentReadyCallbacks[i]();
         }
 
-        setTimeout(() => {
-            setupTruncatedElementTitles();
-        }, 50);
+        contentReadyCallbacks.length = 0;
 
         setTimeout(() => {
             document.body.classList.add("page-columns-transitioned");

@@ -1,0 +1,59 @@
+server:
+  host: 127.0.0.1
+  port: 18080
+
+pages:
+  - name: Browser Test
+    columns:
+      - size: full
+        widgets:
+          - type: clock
+            refresh: 1s
+            hour-format: 12h
+          - type: calendar
+            refresh: 1s
+          - type: to-do
+            id: blink-browser-test
+            refresh: 1s
+          - type: search
+            refresh: 1s
+            search-engine: https://example.com/?q={QUERY}
+          - type: html
+            source: '<p id="not-refreshed">Ordinary widget</p>'
+          - type: split-column
+            widgets:
+              - type: group
+                widgets:
+                  - type: clock
+                    refresh: 1s
+                  - type: html
+                    title: Static child
+                    source: Static child
+              - type: clock
+                refresh: 2s
+
+  - name: Lifecycle
+    columns:
+      - size: full
+        widgets:
+          - type: custom-api
+            refresh: 1s
+            template: |
+              <div class="carousel-container">
+                <div class="carousel-items-container" style="display:flex;overflow:auto">
+                  <div style="min-width:2000px">Carousel content</div>
+                </div>
+              </div>
+              <ul class="list collapsible-container" data-collapse-after="1">
+                <li>First</li><li>Second</li><li>Third</li>
+              </ul>
+              <div class="cards-grid collapsible-container" data-collapse-after-rows="1" style="--cards-per-row:1">
+                <div>First card</div><div>Second card</div>
+              </div>
+              <div class="masonry" data-min-column-width="100" data-max-columns="2">
+                <div>First masonry item</div><div>Second masonry item</div>
+              </div>
+              <span data-dynamic-relative-time="1"></span>
+              <span class="text-truncate">Refreshed title</span>
+              <img loading="lazy" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Lazy image">
+              <button data-popover-type="text" data-popover-text="Lifecycle popover">Popover</button>

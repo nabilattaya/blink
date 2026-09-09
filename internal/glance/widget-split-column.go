@@ -2,6 +2,7 @@ package glance
 
 import (
 	"context"
+	"errors"
 	"html/template"
 	"time"
 )
@@ -16,6 +17,10 @@ type splitColumnWidget struct {
 
 func (widget *splitColumnWidget) initialize() error {
 	widget.withError(nil).withTitle("Split Column").setHideHeader(true)
+
+	if widget.RefreshInterval > 0 {
+		return errors.New("refresh is not supported on split-column widgets; set refresh on child widgets instead")
+	}
 
 	if err := widget.containerWidgetBase._initializeWidgets(); err != nil {
 		return err

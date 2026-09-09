@@ -14,6 +14,8 @@
 
 <p align="center">A lightweight, highly customizable dashboard that displays<br> your feeds in a beautiful, streamlined interface</p>
 
+> **Blink** is a thin Glance fork that adds opt-in, per-widget live refreshing. See [Blink live widget refresh](docs/blink-live-refresh.md) for fork-specific behavior; the rest of this README intentionally stays aligned with upstream Glance.
+
 ![](docs/images/readme-main-image.png)
 
 ## Features

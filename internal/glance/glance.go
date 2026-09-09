@@ -34,8 +34,9 @@ type application struct {
 
 	parsedManifest []byte
 
-	slugToPage map[string]*page
-	widgetByID map[uint64]widget
+	slugToPage     map[string]*page
+	widgetByID     map[uint64]widget
+	pageByWidgetID map[uint64]*page
 
 	RequiresAuth           bool
 	authSecretKey          []byte
@@ -46,11 +47,12 @@ type application struct {
 
 func newApplication(c *config) (*application, error) {
 	app := &application{
-		Version:    buildVersion,
-		CreatedAt:  time.Now(),
-		Config:     *c,
-		slugToPage: make(map[string]*page),
-		widgetByID: make(map[uint64]widget),
+		Version:        buildVersion,
+		CreatedAt:      time.Now(),
+		Config:         *c,
+		slugToPage:     make(map[string]*page),
+		widgetByID:     make(map[uint64]widget),
+		pageByWidgetID: make(map[uint64]*page),
 	}
 	config := &app.Config
 
@@ -174,7 +176,7 @@ func newApplication(c *config) (*application, error) {
 
 		for i := range page.HeadWidgets {
 			widget := page.HeadWidgets[i]
-			app.widgetByID[widget.GetID()] = widget
+			app.registerWidget(page, widget)
 			widget.setProviders(providers)
 		}
 
@@ -187,7 +189,7 @@ func newApplication(c *config) (*application, error) {
 
 			for w := range column.Widgets {
 				widget := column.Widgets[w]
-				app.widgetByID[widget.GetID()] = widget
+				app.registerWidget(page, widget)
 				widget.setProviders(providers)
 			}
 		}
@@ -321,7 +323,9 @@ func (a *application) handlePageRequest(w http.ResponseWriter, r *http.Request) 
 	a.populateTemplateRequestData(&data.Request, r)
 
 	var responseBytes bytes.Buffer
+	page.mu.Lock()
 	err := pageTemplate.Execute(&responseBytes, data)
+	page.mu.Unlock()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
@@ -454,6 +458,7 @@ func (a *application) server() (func() error, func() error) {
 		mux.HandleFunc("POST /api/set-theme/{key}", a.handleThemeChangeRequest)
 	}
 
+	mux.HandleFunc("/api/widgets/{widget}/content/{$}", a.handleNativeWidgetContentRequest)
 	mux.HandleFunc("/api/widgets/{widget}/{path...}", a.handleWidgetRequest)
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
