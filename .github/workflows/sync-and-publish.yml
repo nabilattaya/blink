@@ -48,6 +48,8 @@ jobs:
             exit 0
           fi
 
+          blink_head="$(git rev-parse HEAD)"
+
           set +e
           git merge --no-edit upstream/main
           status=$?
@@ -57,6 +59,20 @@ jobs:
             git merge --abort || true
             echo "::error::Upstream Glance does not merge cleanly into Blink main. No changes were pushed."
             exit "$status"
+          fi
+
+          # Blink owns its GitHub Actions configuration. Preserve it rather
+          # than automatically importing workflow changes from upstream.
+          git restore \
+            --source="$blink_head" \
+            --staged \
+            --worktree \
+            .github/workflows
+
+          git add -A .github/workflows
+
+          if ! git diff --cached --quiet; then
+            git commit --amend --no-edit
           fi
 
           echo "updated=true" >> "$GITHUB_OUTPUT"
