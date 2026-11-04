@@ -115,7 +115,7 @@ func TestNativeRefreshAndGenericWidgetRoutes(t *testing.T) {
 	for _, path := range []string{"content/", "arbitrary/path", "content/subpath"} {
 		response := httptest.NewRecorder()
 		mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/widgets/42/"+path, nil))
-		want := http.StatusNotImplemented
+		want := http.StatusTeapot
 		if path == "content/" {
 			want = http.StatusOK
 			if !strings.Contains(response.Body.String(), `data-widget-id="42"`) {

@@ -201,18 +201,6 @@ export function cleanupPopovers(root) {
         hidePopover();
     }
 }
-        pendingTarget = null;
-        clearTogglePopoverTimeout();
-    }
-
-<<<<<<< HEAD
-    if (root.contains(activeTarget)) {
-=======
-    if (containsTarget(root, activeTarget)) {
->>>>>>> 80f3a6a (refactor: make popovers refresh-safe)
-        hidePopover();
-    }
-}
 
 export function setupPopovers(root = document) {
     const targets = root.querySelectorAll("[data-popover-type]");

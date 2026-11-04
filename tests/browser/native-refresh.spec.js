@@ -375,7 +375,7 @@ test('the generic widget subpath route retains upstream 501 behavior', async ({ 
     const id = await page.locator('[data-widget-refresh]').first().getAttribute('data-widget-id');
     const generic = await request.get(`/api/widgets/${id}/unrelated/subpath`);
     expect(generic.status()).toBe(501);
-    expect(await generic.text()).toBe('');
+    expect(await generic.text()).toBe('not implemented\n');
     const native = await request.get(`/api/widgets/${id}/content/`);
     expect(native.status()).toBe(200);
     expect(await native.text()).toContain(`data-widget-id="${id}"`);
@@ -387,7 +387,9 @@ test('hiding a page cancels its in-flight request and visibility catches up', as
         window.__blinkRefreshRequests = 0;
         window.__blinkRefreshAborted = false;
         window.fetch = (url, options) => {
-            if (/\/api\/widgets\/\d+\/content\/$/.test(url)) {
+            const match = String(url).match(/\/api\/widgets\/(\d+)\/content\/$/);
+            const targetID = document.querySelector('[data-widget-refresh]')?.dataset.widgetId;
+            if (match && match[1] === targetID) {
                 window.__blinkRefreshRequests++;
                 if (window.__blinkRefreshRequests === 1) {
                     return new Promise((_, reject) => {
