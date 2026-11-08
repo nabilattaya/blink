@@ -51,7 +51,10 @@ jobs:
           blink_head="$(git rev-parse HEAD)"
 
           set +e
-          git merge --no-edit upstream/main
+          # Prefer Blink's implementation only for overlapping hunks. This keeps
+          # native widget refresh intact while still importing non-conflicting
+          # upstream changes from Glance.
+          git merge --no-edit -X ours upstream/main
           status=$?
           set -e
 
